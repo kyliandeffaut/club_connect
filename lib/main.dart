@@ -6,7 +6,6 @@ import 'package:flutter_localizations/flutter_localizations.dart';
 import 'dart:math';
 import 'firebase_options.dart';
 
-
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
   await Firebase.initializeApp(options: DefaultFirebaseOptions.currentPlatform);
@@ -64,6 +63,31 @@ String formatTime(String iso) {
     return '${d.hour.toString().padLeft(2, '0')}h${d.minute.toString().padLeft(2, '0')}';
   } catch (_) {
     return '';
+  }
+}
+
+// Rôles disponibles
+const List<String> kPredefinedRoles = [
+  'Président',
+  'Manager',
+  'Coach',
+  'Trésorier',
+  'Communication',
+  'Bénévole',
+  'Joueur',
+  'Arbitre',
+];
+
+Color roleColor(String role) {
+  switch (role) {
+    case 'Président': return Colors.amber;
+    case 'Manager': return Colors.pinkAccent;
+    case 'Coach': return Colors.orangeAccent;
+    case 'Trésorier': return Colors.greenAccent;
+    case 'Communication': return Colors.purpleAccent;
+    case 'Bénévole': return Colors.tealAccent;
+    case 'Arbitre': return Colors.redAccent;
+    default: return Colors.blueAccent;
   }
 }
 
@@ -145,7 +169,8 @@ class _LoginScreenState extends State<LoginScreen> {
         });
       }
     } on FirebaseAuthException catch (e) {
-      if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(e.message ?? 'Erreur'), backgroundColor: Colors.redAccent));
+      if (mounted) ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text(e.message ?? 'Erreur'), backgroundColor: Colors.redAccent));
     } finally {
       if (mounted) setState(() => _loading = false);
     }
@@ -163,10 +188,10 @@ class _LoginScreenState extends State<LoginScreen> {
               const SizedBox(height: 16),
               const Text('ClubConnect', style: TextStyle(fontSize: 28, fontWeight: FontWeight.bold)),
               const SizedBox(height: 8),
-              Text(_isLogin ? 'Connecte-toi à ton club' : 'Crée ton compte', style: const TextStyle(color: Colors.white54)),
+              Text(_isLogin ? 'Connecte-toi à ton club' : 'Crée ton compte',
+                  style: const TextStyle(color: Colors.white54)),
               const SizedBox(height: 40),
-              if (!_isLogin)
-                _field(_nameController, 'Nom complet', Icons.person_outline),
+              if (!_isLogin) _field(_nameController, 'Nom complet', Icons.person_outline),
               _field(_emailController, 'Email', Icons.email_outlined),
               _field(_passwordController, 'Mot de passe', Icons.lock_outline, obscure: true),
               const SizedBox(height: 24),
@@ -187,7 +212,8 @@ class _LoginScreenState extends State<LoginScreen> {
               ),
               TextButton(
                 onPressed: () => setState(() => _isLogin = !_isLogin),
-                child: Text(_isLogin ? "Pas de compte ? S'inscrire" : 'Déjà un compte ? Se connecter',
+                child: Text(
+                    _isLogin ? "Pas de compte ? S'inscrire" : 'Déjà un compte ? Se connecter',
                     style: const TextStyle(color: Colors.blueAccent)),
               ),
             ],
@@ -258,11 +284,13 @@ class _ClubSelectionScreenState extends State<ClubSelectionScreen> {
         'adminId': user.uid,
         'createdAt': FieldValue.serverTimestamp(),
         'channels': ['Général', 'Compétiteurs', 'Loisirs'],
+        'customRoles': [],
       });
 
       await db.collection('users').doc(user.uid).update({
         'role': 'manager',
         'clubId': clubRef.id,
+        'customRole': 'Président',
       });
     } catch (e) {
       _showError('Erreur : $e');
@@ -273,7 +301,10 @@ class _ClubSelectionScreenState extends State<ClubSelectionScreen> {
 
   Future<void> _joinClub() async {
     final code = _codeController.text.trim().toUpperCase();
-    if (code.isEmpty) { _showError("Entre un code d'invitation."); return; }
+    if (code.isEmpty) {
+      _showError("Entre un code d'invitation.");
+      return;
+    }
     setState(() => _isLoading = true);
     try {
       final user = FirebaseAuth.instance.currentUser!;
@@ -287,6 +318,7 @@ class _ClubSelectionScreenState extends State<ClubSelectionScreen> {
       await db.collection('users').doc(user.uid).update({
         'role': 'player',
         'clubId': result.docs.first.id,
+        'customRole': 'Joueur',
       });
     } catch (e) {
       _showError('Erreur : $e');
@@ -296,7 +328,8 @@ class _ClubSelectionScreenState extends State<ClubSelectionScreen> {
   }
 
   void _showError(String msg) {
-    ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(msg), backgroundColor: Colors.redAccent));
+    ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(msg), backgroundColor: Colors.redAccent));
   }
 
   @override
@@ -343,7 +376,8 @@ class _ClubSelectionScreenState extends State<ClubSelectionScreen> {
             ),
             onPressed: _createClub,
             icon: const Icon(Icons.add_circle_outline, color: Colors.white),
-            label: const Text('CRÉER MON CLUB', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
+            label: const Text('CRÉER MON CLUB',
+                style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
           ),
         ),
       ]),
@@ -382,7 +416,8 @@ class _ClubSelectionScreenState extends State<ClubSelectionScreen> {
             ),
             onPressed: _joinClub,
             icon: const Icon(Icons.login, color: Colors.greenAccent),
-            label: const Text('REJOINDRE LE CLUB', style: TextStyle(color: Colors.greenAccent, fontWeight: FontWeight.bold)),
+            label: const Text('REJOINDRE LE CLUB',
+                style: TextStyle(color: Colors.greenAccent, fontWeight: FontWeight.bold)),
           ),
         ),
       ]),
@@ -408,7 +443,7 @@ class _ClubSelectionScreenState extends State<ClubSelectionScreen> {
 }
 
 // ══════════════════════════════════════════
-// MAIN SHELL (Navigation principale)
+// MAIN SHELL
 // ══════════════════════════════════════════
 class MainShell extends StatefulWidget {
   const MainShell({super.key});
@@ -439,7 +474,7 @@ class _MainShellState extends State<MainShell> {
         final screens = [
           HomeTab(clubId: _clubId!, userData: _userData!, isManager: isManager),
           EventsTab(clubId: _clubId!, userData: _userData!, isManager: isManager),
-          MessagingTab(clubId: _clubId!),
+          MessagingTab(clubId: _clubId!, isManager: isManager),
           MembersTab(clubId: _clubId!, isManager: isManager),
           SettingsTab(clubId: _clubId!, userData: _userData!, isManager: isManager),
         ];
@@ -482,112 +517,148 @@ class HomeTab extends StatelessWidget {
   Widget build(BuildContext context) {
     final uid = FirebaseAuth.instance.currentUser!.uid;
     return SafeArea(
-      child: SingleChildScrollView(
-        padding: const EdgeInsets.all(20),
-        child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-          // Header
-          Row(mainAxisAlignment: MainAxisAlignment.spaceBetween, children: [
-            Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-              Text('Bonjour, ${(userData['name'] as String? ?? 'Joueur').split(' ').first} 👋',
-                  style: const TextStyle(fontSize: 22, fontWeight: FontWeight.bold)),
-              Text(isManager ? '⚡ Manager' : '🏃 Joueur', style: const TextStyle(color: Colors.white54, fontSize: 13)),
-            ]),
-            CircleAvatar(
-              backgroundColor: Colors.blueAccent.withOpacity(0.2),
-              child: Text((userData['name'] as String? ?? 'U')[0].toUpperCase(),
-                  style: const TextStyle(color: Colors.blueAccent, fontWeight: FontWeight.bold)),
-            ),
-          ]),
-          const SizedBox(height: 24),
+      child: StreamBuilder<DocumentSnapshot>(
+        stream: FirebaseFirestore.instance.collection('clubs').doc(clubId).snapshots(),
+        builder: (context, clubSnap) {
+          if (!clubSnap.hasData) return const Center(child: CircularProgressIndicator());
+          final club = clubSnap.data!.data() as Map<String, dynamic>;
+          final clubName = club['name'] as String? ?? 'Mon Club';
+          final sport = club['sport'] as String? ?? '';
+          final city = club['city'] as String? ?? '';
 
-          // Info club
-          StreamBuilder<DocumentSnapshot>(
-            stream: FirebaseFirestore.instance.collection('clubs').doc(clubId).snapshots(),
-            builder: (context, snap) {
-              if (!snap.hasData) return const SizedBox();
-              final club = snap.data!.data() as Map<String, dynamic>;
-              return Container(
+          return SingleChildScrollView(
+            padding: const EdgeInsets.all(20),
+            child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+              // Header : Logo + Nom du club
+              Container(
                 width: double.infinity,
-                padding: const EdgeInsets.all(20),
+                padding: const EdgeInsets.all(24),
                 decoration: BoxDecoration(
-                  gradient: const LinearGradient(colors: [Color(0xFF1E3A5F), Color(0xFF0D1B2A)]),
-                  borderRadius: BorderRadius.circular(16),
+                  gradient: const LinearGradient(
+                    colors: [Color(0xFF1A2F4A), Color(0xFF0D1B2A)],
+                    begin: Alignment.topLeft,
+                    end: Alignment.bottomRight,
+                  ),
+                  borderRadius: BorderRadius.circular(20),
+                  border: Border.all(color: Colors.blueAccent.withOpacity(0.3)),
                 ),
-                child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                  Row(children: [
-                    const Icon(Icons.shield_rounded, color: Colors.blueAccent, size: 20),
-                    const SizedBox(width: 8),
-                    Text(club['name'] ?? '', style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
-                  ]),
-                  if ((club['sport'] as String? ?? '').isNotEmpty) ...[
+                child: Column(children: [
+                  Container(
+                    width: 80, height: 80,
+                    decoration: BoxDecoration(
+                      shape: BoxShape.circle,
+                      color: Colors.blueAccent.withOpacity(0.15),
+                      border: Border.all(color: Colors.blueAccent.withOpacity(0.5), width: 2),
+                    ),
+                    child: Center(
+                      child: Text(
+                        clubName.isNotEmpty ? clubName[0].toUpperCase() : 'C',
+                        style: const TextStyle(fontSize: 36, fontWeight: FontWeight.bold, color: Colors.blueAccent),
+                      ),
+                    ),
+                  ),
+                  const SizedBox(height: 14),
+                  Text(clubName,
+                      style: const TextStyle(fontSize: 24, fontWeight: FontWeight.bold),
+                      textAlign: TextAlign.center),
+                  if (sport.isNotEmpty || city.isNotEmpty) ...[
                     const SizedBox(height: 6),
-                    Text('${club['sport']} · ${club['city'] ?? ''}', style: const TextStyle(color: Colors.white54)),
+                    Text(
+                      '$sport${sport.isNotEmpty && city.isNotEmpty ? ' · ' : ''}$city',
+                      style: const TextStyle(color: Colors.white54, fontSize: 14),
+                    ),
                   ],
                   const SizedBox(height: 12),
                   Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-                    decoration: BoxDecoration(color: Colors.white.withOpacity(0.08), borderRadius: BorderRadius.circular(8)),
-                    child: Row(mainAxisSize: MainAxisSize.min, children: [
-                      const Icon(Icons.key, size: 14, color: Colors.amber),
-                      const SizedBox(width: 6),
-                      Text('Code : ${club['clubCode'] ?? ''}',
-                          style: const TextStyle(color: Colors.amber, fontWeight: FontWeight.bold, letterSpacing: 2)),
-                    ]),
+                    padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+                    decoration: BoxDecoration(
+                      color: (isManager ? Colors.pinkAccent : Colors.blueAccent).withOpacity(0.15),
+                      borderRadius: BorderRadius.circular(8),
+                      border: Border.all(
+                          color: (isManager ? Colors.pinkAccent : Colors.blueAccent).withOpacity(0.4)),
+                    ),
+                    child: Text(isManager ? '⚡ Manager' : '🏃 Joueur',
+                        style: TextStyle(
+                            color: isManager ? Colors.pinkAccent : Colors.blueAccent,
+                            fontWeight: FontWeight.bold,
+                            fontSize: 12)),
                   ),
                 ]),
-              );
-            },
-          ),
-          const SizedBox(height: 24),
+              ),
+              const SizedBox(height: 24),
 
-          // Prochain événement
-          const Text('Prochain événement', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
-          const SizedBox(height: 12),
-          StreamBuilder<QuerySnapshot>(
-            stream: FirebaseFirestore.instance
-                .collection('events')
-                .where('clubId', isEqualTo: clubId)
-                .orderBy('startDate')
-                .limit(1)
-                .snapshots(),
-            builder: (context, snap) {
-              if (!snap.hasData || snap.data!.docs.isEmpty) {
-                return Container(
-                  padding: const EdgeInsets.all(20),
-                  decoration: BoxDecoration(color: Colors.white.withOpacity(0.04), borderRadius: BorderRadius.circular(12)),
-                  child: const Text('Aucun événement à venir.', style: TextStyle(color: Colors.white54)),
-                );
-              }
-              final data = snap.data!.docs.first.data() as Map<String, dynamic>;
-              final eventId = snap.data!.docs.first.id;
-              final attendees = data['attendees'] as List? ?? [];
-              final amIPresent = attendees.contains(uid);
-              return _EventMiniCard(data: data, eventId: eventId, attendees: attendees, amIPresent: amIPresent, uid: uid);
-            },
-          ),
-          const SizedBox(height: 24),
-
-          // Stats rapides
-          const Text('Aperçu du club', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
-          const SizedBox(height: 12),
-          StreamBuilder<QuerySnapshot>(
-            stream: FirebaseFirestore.instance.collection('users').where('clubId', isEqualTo: clubId).snapshots(),
-            builder: (context, snap) {
-              final memberCount = snap.data?.docs.length ?? 0;
-              return StreamBuilder<QuerySnapshot>(
-                stream: FirebaseFirestore.instance.collection('events').where('clubId', isEqualTo: clubId).snapshots(),
-                builder: (context, evSnap) {
-                  final eventCount = evSnap.data?.docs.length ?? 0;
-                  return Row(children: [
-                    _StatCard(icon: Icons.group, label: 'Membres', value: '$memberCount', color: Colors.blueAccent),
-                    const SizedBox(width: 12),
-                    _StatCard(icon: Icons.calendar_month, label: 'Événements', value: '$eventCount', color: Colors.pinkAccent),
-                  ]);
+              // Prochain événement
+              const Text('Prochain événement',
+                  style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
+              const SizedBox(height: 12),
+              StreamBuilder<QuerySnapshot>(
+                stream: FirebaseFirestore.instance
+                    .collection('events')
+                    .where('clubId', isEqualTo: clubId)
+                    .orderBy('startDate')
+                    .limit(1)
+                    .snapshots(),
+                builder: (context, snap) {
+                  if (!snap.hasData || snap.data!.docs.isEmpty) {
+                    return Container(
+                      padding: const EdgeInsets.all(20),
+                      decoration: BoxDecoration(
+                          color: Colors.white.withOpacity(0.04),
+                          borderRadius: BorderRadius.circular(12)),
+                      child: const Text('Aucun événement à venir.',
+                          style: TextStyle(color: Colors.white54)),
+                    );
+                  }
+                  final doc = snap.data!.docs.first;
+                  final data = doc.data() as Map<String, dynamic>;
+                  final attendees = data['attendees'] as List? ?? [];
+                  return _EventMiniCard(
+                      data: data,
+                      eventId: doc.id,
+                      attendees: attendees,
+                      amIPresent: attendees.contains(uid),
+                      uid: uid);
                 },
-              );
-            },
-          ),
-        ]),
+              ),
+              const SizedBox(height: 24),
+
+              // Stats
+              const Text('Aperçu du club', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
+              const SizedBox(height: 12),
+              StreamBuilder<QuerySnapshot>(
+                stream: FirebaseFirestore.instance
+                    .collection('users')
+                    .where('clubId', isEqualTo: clubId)
+                    .snapshots(),
+                builder: (context, snap) {
+                  final memberCount = snap.data?.docs.length ?? 0;
+                  return StreamBuilder<QuerySnapshot>(
+                    stream: FirebaseFirestore.instance
+                        .collection('events')
+                        .where('clubId', isEqualTo: clubId)
+                        .snapshots(),
+                    builder: (context, evSnap) {
+                      final eventCount = evSnap.data?.docs.length ?? 0;
+                      return Row(children: [
+                        _StatCard(
+                            icon: Icons.group,
+                            label: 'Membres',
+                            value: '$memberCount',
+                            color: Colors.blueAccent),
+                        const SizedBox(width: 12),
+                        _StatCard(
+                            icon: Icons.calendar_month,
+                            label: 'Événements',
+                            value: '$eventCount',
+                            color: Colors.pinkAccent),
+                      ]);
+                    },
+                  );
+                },
+              ),
+            ]),
+          );
+        },
       ),
     );
   }
@@ -625,7 +696,12 @@ class _EventMiniCard extends StatelessWidget {
   final String eventId, uid;
   final List attendees;
   final bool amIPresent;
-  const _EventMiniCard({required this.data, required this.eventId, required this.attendees, required this.amIPresent, required this.uid});
+  const _EventMiniCard(
+      {required this.data,
+      required this.eventId,
+      required this.attendees,
+      required this.amIPresent,
+      required this.uid});
 
   @override
   Widget build(BuildContext context) {
@@ -648,10 +724,12 @@ class _EventMiniCard extends StatelessWidget {
               color: type == 'Match' ? Colors.pinkAccent : Colors.blueAccent),
         ),
         const SizedBox(width: 14),
-        Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+        Expanded(
+            child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
           Text(data['title'] ?? '', style: const TextStyle(fontWeight: FontWeight.bold)),
           const SizedBox(height: 4),
-          Text('${formatDate(data['startDate'] ?? '')} · ${formatTime(data['startDate'] ?? '')}',
+          Text(
+              '${formatDate(data['startDate'] ?? '')} · ${formatTime(data['startDate'] ?? '')}',
               style: const TextStyle(color: Colors.white54, fontSize: 12)),
           Text(data['location'] ?? '', style: const TextStyle(color: Colors.white38, fontSize: 12)),
         ])),
@@ -672,7 +750,9 @@ class _EventMiniCard extends StatelessWidget {
               border: Border.all(color: amIPresent ? Colors.greenAccent : Colors.white24),
             ),
             child: Text(amIPresent ? '✓ Présent' : 'Répondre',
-                style: TextStyle(fontSize: 12, color: amIPresent ? Colors.greenAccent : Colors.white54,
+                style: TextStyle(
+                    fontSize: 12,
+                    color: amIPresent ? Colors.greenAccent : Colors.white54,
                     fontWeight: FontWeight.bold)),
           ),
         ),
@@ -688,7 +768,8 @@ class EventsTab extends StatelessWidget {
   final String clubId;
   final Map<String, dynamic> userData;
   final bool isManager;
-  const EventsTab({super.key, required this.clubId, required this.userData, required this.isManager});
+  const EventsTab(
+      {super.key, required this.clubId, required this.userData, required this.isManager});
 
   @override
   Widget build(BuildContext context) {
@@ -699,13 +780,18 @@ class EventsTab extends StatelessWidget {
         elevation: 0,
         title: const Text('Événements', style: TextStyle(fontWeight: FontWeight.bold)),
         actions: isManager
-            ? [IconButton(icon: const Icon(Icons.add_circle, color: Colors.pinkAccent, size: 28),
-                onPressed: () => showModalBottomSheet(
-                  context: context, isScrollControlled: true,
-                  backgroundColor: const Color(0xFF1C1C1E),
-                  shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(24))),
-                  builder: (_) => CreateEventSheet(clubId: clubId),
-                ))]
+            ? [
+                IconButton(
+                    icon: const Icon(Icons.add_circle, color: Colors.pinkAccent, size: 28),
+                    onPressed: () => showModalBottomSheet(
+                          context: context,
+                          isScrollControlled: true,
+                          backgroundColor: const Color(0xFF1C1C1E),
+                          shape: const RoundedRectangleBorder(
+                              borderRadius: BorderRadius.vertical(top: Radius.circular(24))),
+                          builder: (_) => CreateEventSheet(clubId: clubId),
+                        ))
+              ]
             : null,
       ),
       body: StreamBuilder<QuerySnapshot>(
@@ -715,9 +801,12 @@ class EventsTab extends StatelessWidget {
             .orderBy('startDate')
             .snapshots(),
         builder: (context, snap) {
-          if (snap.connectionState == ConnectionState.waiting) return const Center(child: CircularProgressIndicator());
+          if (snap.connectionState == ConnectionState.waiting) {
+            return const Center(child: CircularProgressIndicator());
+          }
           if (!snap.hasData || snap.data!.docs.isEmpty) {
-            return const Center(child: Column(mainAxisAlignment: MainAxisAlignment.center, children: [
+            return const Center(
+                child: Column(mainAxisAlignment: MainAxisAlignment.center, children: [
               Icon(Icons.calendar_today, size: 48, color: Colors.white24),
               SizedBox(height: 12),
               Text('Aucun événement prévu.', style: TextStyle(color: Colors.white54)),
@@ -731,8 +820,13 @@ class EventsTab extends StatelessWidget {
               final data = doc.data() as Map<String, dynamic>;
               final attendees = data['attendees'] as List? ?? [];
               final amIPresent = attendees.contains(uid);
-              return _EventCard(data: data, eventId: doc.id, attendees: attendees, amIPresent: amIPresent,
-                  uid: uid, isManager: isManager);
+              return _EventCard(
+                  data: data,
+                  eventId: doc.id,
+                  attendees: attendees,
+                  amIPresent: amIPresent,
+                  uid: uid,
+                  isManager: isManager);
             },
           );
         },
@@ -746,8 +840,13 @@ class _EventCard extends StatelessWidget {
   final String eventId, uid;
   final List attendees;
   final bool amIPresent, isManager;
-  const _EventCard({required this.data, required this.eventId, required this.attendees,
-      required this.amIPresent, required this.uid, required this.isManager});
+  const _EventCard(
+      {required this.data,
+      required this.eventId,
+      required this.attendees,
+      required this.amIPresent,
+      required this.uid,
+      required this.isManager});
 
   @override
   Widget build(BuildContext context) {
@@ -763,7 +862,6 @@ class _EventCard extends StatelessWidget {
         border: Border.all(color: Colors.white10),
       ),
       child: Column(children: [
-        // Header coloré
         Container(
           padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
           decoration: BoxDecoration(
@@ -774,24 +872,33 @@ class _EventCard extends StatelessWidget {
             Row(children: [
               Icon(isMatch ? Icons.emoji_events : Icons.fitness_center, color: color, size: 18),
               const SizedBox(width: 8),
-              Text(type.toUpperCase(), style: TextStyle(color: color, fontWeight: FontWeight.bold, fontSize: 12)),
+              Text(type.toUpperCase(),
+                  style: TextStyle(color: color, fontWeight: FontWeight.bold, fontSize: 12)),
             ]),
             Row(children: [
               const Icon(Icons.people, size: 14, color: Colors.amber),
               const SizedBox(width: 4),
-              Text('${attendees.length}', style: const TextStyle(color: Colors.amber, fontWeight: FontWeight.bold)),
+              Text('${attendees.length}',
+                  style: const TextStyle(color: Colors.amber, fontWeight: FontWeight.bold)),
               if (isManager) ...[
                 const SizedBox(width: 8),
                 GestureDetector(
                   onTap: () async {
-                    final confirm = await showDialog<bool>(context: context, builder: (_) => AlertDialog(
-                      backgroundColor: const Color(0xFF1C1C1E),
-                      title: const Text("Supprimer l'événement ?"),
-                      actions: [
-                        TextButton(onPressed: () => Navigator.pop(context, false), child: const Text('Annuler')),
-                        TextButton(onPressed: () => Navigator.pop(context, true), child: const Text('Supprimer', style: TextStyle(color: Colors.redAccent))),
-                      ],
-                    ));
+                    final confirm = await showDialog<bool>(
+                        context: context,
+                        builder: (_) => AlertDialog(
+                              backgroundColor: const Color(0xFF1C1C1E),
+                              title: const Text("Supprimer l'événement ?"),
+                              actions: [
+                                TextButton(
+                                    onPressed: () => Navigator.pop(context, false),
+                                    child: const Text('Annuler')),
+                                TextButton(
+                                    onPressed: () => Navigator.pop(context, true),
+                                    child: const Text('Supprimer',
+                                        style: TextStyle(color: Colors.redAccent))),
+                              ],
+                            ));
                     if (confirm == true) {
                       await FirebaseFirestore.instance.collection('events').doc(eventId).delete();
                     }
@@ -802,13 +909,14 @@ class _EventCard extends StatelessWidget {
             ]),
           ]),
         ),
-        // Body
         Padding(
           padding: const EdgeInsets.all(16),
           child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-            Text(data['title'] ?? '', style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
+            Text(data['title'] ?? '',
+                style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
             const SizedBox(height: 8),
-            _infoRow(Icons.calendar_today, '${formatDate(data['startDate'] ?? '')} · ${formatTime(data['startDate'] ?? '')} → ${formatTime(data['endDate'] ?? '')}'),
+            _infoRow(Icons.calendar_today,
+                '${formatDate(data['startDate'] ?? '')} · ${formatTime(data['startDate'] ?? '')} → ${formatTime(data['endDate'] ?? '')}'),
             _infoRow(Icons.location_on, data['location'] ?? 'À définir'),
             if ((data['description'] as String? ?? '').isNotEmpty)
               _infoRow(Icons.info_outline, data['description']),
@@ -819,7 +927,8 @@ class _EventCard extends StatelessWidget {
               width: double.infinity,
               child: ElevatedButton(
                 style: ElevatedButton.styleFrom(
-                  backgroundColor: amIPresent ? Colors.white10 : Colors.greenAccent.withOpacity(0.15),
+                  backgroundColor:
+                      amIPresent ? Colors.white10 : Colors.greenAccent.withOpacity(0.15),
                   side: BorderSide(color: amIPresent ? Colors.white24 : Colors.greenAccent),
                   padding: const EdgeInsets.symmetric(vertical: 14),
                   shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
@@ -833,7 +942,9 @@ class _EventCard extends StatelessWidget {
                   }
                 },
                 child: Text(amIPresent ? '✗  JE SERAI ABSENT' : '✓  JE SERAI PRÉSENT',
-                    style: TextStyle(color: amIPresent ? Colors.white38 : Colors.greenAccent, fontWeight: FontWeight.bold)),
+                    style: TextStyle(
+                        color: amIPresent ? Colors.white38 : Colors.greenAccent,
+                        fontWeight: FontWeight.bold)),
               ),
             ),
           ]),
@@ -875,19 +986,31 @@ class _CreateEventSheetState extends State<CreateEventSheet> {
   bool _loading = false;
 
   Future<void> _pickStart() async {
-    final date = await showDatePicker(context: context, initialDate: _startDate, firstDate: DateTime.now(), lastDate: DateTime.now().add(const Duration(days: 365)));
+    final date = await showDatePicker(
+        context: context,
+        initialDate: _startDate,
+        firstDate: DateTime.now(),
+        lastDate: DateTime.now().add(const Duration(days: 365)));
     if (date == null) return;
-    final time = await showTimePicker(context: context, initialTime: TimeOfDay.fromDateTime(_startDate));
+    final time =
+        await showTimePicker(context: context, initialTime: TimeOfDay.fromDateTime(_startDate));
     if (time == null) return;
-    setState(() => _startDate = DateTime(date.year, date.month, date.day, time.hour, time.minute));
+    setState(() =>
+        _startDate = DateTime(date.year, date.month, date.day, time.hour, time.minute));
   }
 
   Future<void> _pickEnd() async {
-    final date = await showDatePicker(context: context, initialDate: _endDate, firstDate: _startDate, lastDate: DateTime.now().add(const Duration(days: 365)));
+    final date = await showDatePicker(
+        context: context,
+        initialDate: _endDate,
+        firstDate: _startDate,
+        lastDate: DateTime.now().add(const Duration(days: 365)));
     if (date == null) return;
-    final time = await showTimePicker(context: context, initialTime: TimeOfDay.fromDateTime(_endDate));
+    final time =
+        await showTimePicker(context: context, initialTime: TimeOfDay.fromDateTime(_endDate));
     if (time == null) return;
-    setState(() => _endDate = DateTime(date.year, date.month, date.day, time.hour, time.minute));
+    setState(
+        () => _endDate = DateTime(date.year, date.month, date.day, time.hour, time.minute));
   }
 
   Future<void> _submit() async {
@@ -911,63 +1034,91 @@ class _CreateEventSheetState extends State<CreateEventSheet> {
   @override
   Widget build(BuildContext context) {
     return Padding(
-      padding: EdgeInsets.only(bottom: MediaQuery.of(context).viewInsets.bottom, left: 24, right: 24, top: 24),
+      padding: EdgeInsets.only(
+          bottom: MediaQuery.of(context).viewInsets.bottom, left: 24, right: 24, top: 24),
       child: SingleChildScrollView(
-        child: Column(crossAxisAlignment: CrossAxisAlignment.start, mainAxisSize: MainAxisSize.min, children: [
-          Row(mainAxisAlignment: MainAxisAlignment.spaceBetween, children: [
-            const Text('Nouvel événement', style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold)),
-            IconButton(icon: const Icon(Icons.close), onPressed: () => Navigator.pop(context)),
-          ]),
-          const SizedBox(height: 16),
-          TextField(
-            controller: _titleController,
-            decoration: InputDecoration(labelText: 'Titre *', border: OutlineInputBorder(borderRadius: BorderRadius.circular(10)), filled: true, fillColor: Colors.white.withOpacity(0.05)),
-          ),
-          const SizedBox(height: 12),
-          Row(children: [
-            Expanded(child: _typeChip('Entraînement', Icons.fitness_center, Colors.blueAccent)),
-            const SizedBox(width: 10),
-            Expanded(child: _typeChip('Match', Icons.emoji_events, Colors.pinkAccent)),
-          ]),
-          const SizedBox(height: 12),
-          Row(children: [
-            Expanded(child: _dateTile('Début', _startDate, _pickStart)),
-            const SizedBox(width: 10),
-            Expanded(child: _dateTile('Fin', _endDate, _pickEnd)),
-          ]),
-          const SizedBox(height: 12),
-          TextField(
-            controller: _locationController,
-            decoration: InputDecoration(labelText: 'Lieu', prefixIcon: const Icon(Icons.location_on), border: OutlineInputBorder(borderRadius: BorderRadius.circular(10)), filled: true, fillColor: Colors.white.withOpacity(0.05)),
-          ),
-          const SizedBox(height: 12),
-          TextField(
-            controller: _descController,
-            maxLines: 2,
-            decoration: InputDecoration(labelText: 'Description', border: OutlineInputBorder(borderRadius: BorderRadius.circular(10)), filled: true, fillColor: Colors.white.withOpacity(0.05)),
-          ),
-          const SizedBox(height: 12),
-          DropdownButtonFormField<String>(
-            value: _recurrence,
-            decoration: InputDecoration(labelText: 'Récurrence', prefixIcon: const Icon(Icons.repeat), border: OutlineInputBorder(borderRadius: BorderRadius.circular(10)), filled: true, fillColor: Colors.white.withOpacity(0.05)),
-            items: ['Aucune', 'Hebdomadaire', 'Bimensuelle', 'Mensuelle']
-                .map((r) => DropdownMenuItem(value: r, child: Text(r))).toList(),
-            onChanged: (v) => setState(() => _recurrence = v!),
-            dropdownColor: const Color(0xFF1C1C1E),
-          ),
-          const SizedBox(height: 20),
-          SizedBox(
-            width: double.infinity,
-            child: ElevatedButton(
-              style: ElevatedButton.styleFrom(backgroundColor: Colors.pinkAccent, padding: const EdgeInsets.symmetric(vertical: 16), shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12))),
-              onPressed: _loading ? null : _submit,
-              child: _loading
-                  ? const CircularProgressIndicator(color: Colors.white, strokeWidth: 2)
-                  : const Text('CRÉER L\'ÉVÉNEMENT', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
-            ),
-          ),
-          const SizedBox(height: 16),
-        ]),
+        child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Row(mainAxisAlignment: MainAxisAlignment.spaceBetween, children: [
+                const Text('Nouvel événement',
+                    style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold)),
+                IconButton(icon: const Icon(Icons.close), onPressed: () => Navigator.pop(context)),
+              ]),
+              const SizedBox(height: 16),
+              TextField(
+                controller: _titleController,
+                decoration: InputDecoration(
+                    labelText: 'Titre *',
+                    border: OutlineInputBorder(borderRadius: BorderRadius.circular(10)),
+                    filled: true,
+                    fillColor: Colors.white.withOpacity(0.05)),
+              ),
+              const SizedBox(height: 12),
+              Row(children: [
+                Expanded(child: _typeChip('Entraînement', Icons.fitness_center, Colors.blueAccent)),
+                const SizedBox(width: 10),
+                Expanded(child: _typeChip('Match', Icons.emoji_events, Colors.pinkAccent)),
+              ]),
+              const SizedBox(height: 12),
+              Row(children: [
+                Expanded(child: _dateTile('Début', _startDate, _pickStart)),
+                const SizedBox(width: 10),
+                Expanded(child: _dateTile('Fin', _endDate, _pickEnd)),
+              ]),
+              const SizedBox(height: 12),
+              TextField(
+                controller: _locationController,
+                decoration: InputDecoration(
+                    labelText: 'Lieu',
+                    prefixIcon: const Icon(Icons.location_on),
+                    border: OutlineInputBorder(borderRadius: BorderRadius.circular(10)),
+                    filled: true,
+                    fillColor: Colors.white.withOpacity(0.05)),
+              ),
+              const SizedBox(height: 12),
+              TextField(
+                controller: _descController,
+                maxLines: 2,
+                decoration: InputDecoration(
+                    labelText: 'Description',
+                    border: OutlineInputBorder(borderRadius: BorderRadius.circular(10)),
+                    filled: true,
+                    fillColor: Colors.white.withOpacity(0.05)),
+              ),
+              const SizedBox(height: 12),
+              DropdownButtonFormField<String>(
+                value: _recurrence,
+                decoration: InputDecoration(
+                    labelText: 'Récurrence',
+                    prefixIcon: const Icon(Icons.repeat),
+                    border: OutlineInputBorder(borderRadius: BorderRadius.circular(10)),
+                    filled: true,
+                    fillColor: Colors.white.withOpacity(0.05)),
+                items: ['Aucune', 'Hebdomadaire', 'Bimensuelle', 'Mensuelle']
+                    .map((r) => DropdownMenuItem(value: r, child: Text(r)))
+                    .toList(),
+                onChanged: (v) => setState(() => _recurrence = v!),
+                dropdownColor: const Color(0xFF1C1C1E),
+              ),
+              const SizedBox(height: 20),
+              SizedBox(
+                width: double.infinity,
+                child: ElevatedButton(
+                  style: ElevatedButton.styleFrom(
+                      backgroundColor: Colors.pinkAccent,
+                      padding: const EdgeInsets.symmetric(vertical: 16),
+                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12))),
+                  onPressed: _loading ? null : _submit,
+                  child: _loading
+                      ? const CircularProgressIndicator(color: Colors.white, strokeWidth: 2)
+                      : const Text('CRÉER L\'ÉVÉNEMENT',
+                          style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
+                ),
+              ),
+              const SizedBox(height: 16),
+            ]),
       ),
     );
   }
@@ -986,7 +1137,11 @@ class _CreateEventSheetState extends State<CreateEventSheet> {
         child: Row(mainAxisAlignment: MainAxisAlignment.center, children: [
           Icon(icon, color: selected ? color : Colors.white38, size: 18),
           const SizedBox(width: 6),
-          Text(label, style: TextStyle(color: selected ? color : Colors.white38, fontWeight: FontWeight.bold, fontSize: 13)),
+          Text(label,
+              style: TextStyle(
+                  color: selected ? color : Colors.white38,
+                  fontWeight: FontWeight.bold,
+                  fontSize: 13)),
         ]),
       ),
     );
@@ -997,12 +1152,16 @@ class _CreateEventSheetState extends State<CreateEventSheet> {
       onTap: onTap,
       child: Container(
         padding: const EdgeInsets.all(12),
-        decoration: BoxDecoration(color: Colors.white.withOpacity(0.05), borderRadius: BorderRadius.circular(10), border: Border.all(color: Colors.white12)),
+        decoration: BoxDecoration(
+            color: Colors.white.withOpacity(0.05),
+            borderRadius: BorderRadius.circular(10),
+            border: Border.all(color: Colors.white12)),
         child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
           Text(label, style: const TextStyle(color: Colors.white38, fontSize: 11)),
           const SizedBox(height: 4),
           Text(formatDate(dt.toIso8601String()), style: const TextStyle(fontWeight: FontWeight.bold)),
-          Text(formatTime(dt.toIso8601String()), style: const TextStyle(color: Colors.white54, fontSize: 13)),
+          Text(formatTime(dt.toIso8601String()),
+              style: const TextStyle(color: Colors.white54, fontSize: 13)),
         ]),
       ),
     );
@@ -1014,13 +1173,77 @@ class _CreateEventSheetState extends State<CreateEventSheet> {
 // ══════════════════════════════════════════
 class MessagingTab extends StatefulWidget {
   final String clubId;
-  const MessagingTab({super.key, required this.clubId});
+  final bool isManager;
+  const MessagingTab({super.key, required this.clubId, required this.isManager});
   @override
   State<MessagingTab> createState() => _MessagingTabState();
 }
 
 class _MessagingTabState extends State<MessagingTab> {
   String _selectedChannel = 'Général';
+
+  Future<void> _createChannel() async {
+    final controller = TextEditingController();
+    final name = await showDialog<String>(
+      context: context,
+      builder: (_) => AlertDialog(
+        backgroundColor: const Color(0xFF1C1C1E),
+        title: const Text('Nouveau canal'),
+        content: TextField(
+          controller: controller,
+          autofocus: true,
+          decoration: InputDecoration(
+            hintText: 'Nom du canal (ex: U13, Seniors...)',
+            border: OutlineInputBorder(borderRadius: BorderRadius.circular(10)),
+            filled: true,
+            fillColor: Colors.white.withOpacity(0.05),
+          ),
+        ),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(context), child: const Text('Annuler')),
+          TextButton(
+            onPressed: () => Navigator.pop(context, controller.text.trim()),
+            child: const Text('Créer',
+                style: TextStyle(color: Colors.blueAccent, fontWeight: FontWeight.bold)),
+          ),
+        ],
+      ),
+    );
+    if (name != null && name.isNotEmpty) {
+      await FirebaseFirestore.instance.collection('clubs').doc(widget.clubId).update({
+        'channels': FieldValue.arrayUnion([name]),
+      });
+      setState(() => _selectedChannel = name);
+    }
+  }
+
+  Future<void> _createPrivateDiscussion() async {
+    final membersSnap = await FirebaseFirestore.instance
+        .collection('users')
+        .where('clubId', isEqualTo: widget.clubId)
+        .get();
+    final currentUid = FirebaseAuth.instance.currentUser!.uid;
+    final others = membersSnap.docs.where((d) => d.id != currentUid).toList();
+
+    if (!mounted) return;
+
+    final selected = await showModalBottomSheet<DocumentSnapshot>(
+      context: context,
+      backgroundColor: const Color(0xFF1C1C1E),
+      shape: const RoundedRectangleBorder(
+          borderRadius: BorderRadius.vertical(top: Radius.circular(24))),
+      builder: (_) => _MemberPickerSheet(members: others),
+    );
+
+    if (selected != null) {
+      final otherData = selected.data() as Map<String, dynamic>;
+      final channelName = '💬 ${otherData['name']}';
+      await FirebaseFirestore.instance.collection('clubs').doc(widget.clubId).update({
+        'channels': FieldValue.arrayUnion([channelName]),
+      });
+      setState(() => _selectedChannel = channelName);
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -1029,6 +1252,33 @@ class _MessagingTabState extends State<MessagingTab> {
         backgroundColor: Colors.transparent,
         elevation: 0,
         title: const Text('Messages', style: TextStyle(fontWeight: FontWeight.bold)),
+        actions: [
+          PopupMenuButton<String>(
+            icon: const Icon(Icons.add_circle, color: Colors.blueAccent, size: 28),
+            color: const Color(0xFF1C1C1E),
+            onSelected: (v) {
+              if (v == 'canal') _createChannel();
+              if (v == 'prive') _createPrivateDiscussion();
+            },
+            itemBuilder: (_) => [
+              if (widget.isManager)
+                const PopupMenuItem(
+                    value: 'canal',
+                    child: Row(children: [
+                      Icon(Icons.tag, size: 18, color: Colors.blueAccent),
+                      SizedBox(width: 10),
+                      Text('Nouveau canal'),
+                    ])),
+              const PopupMenuItem(
+                  value: 'prive',
+                  child: Row(children: [
+                    Icon(Icons.person, size: 18, color: Colors.purpleAccent),
+                    SizedBox(width: 10),
+                    Text('Discussion privée'),
+                  ])),
+            ],
+          ),
+        ],
       ),
       body: StreamBuilder<DocumentSnapshot>(
         stream: FirebaseFirestore.instance.collection('clubs').doc(widget.clubId).snapshots(),
@@ -1037,10 +1287,16 @@ class _MessagingTabState extends State<MessagingTab> {
           final club = snap.data!.data() as Map<String, dynamic>;
           final channels = (club['channels'] as List?)?.cast<String>() ?? ['Général'];
 
+          if (!channels.contains(_selectedChannel) && channels.isNotEmpty) {
+            WidgetsBinding.instance.addPostFrameCallback((_) {
+              setState(() => _selectedChannel = channels.first);
+            });
+          }
+
           return Column(children: [
-            // Sélecteur de canaux
-            SizedBox(
-              height: 44,
+            Container(
+              height: 48,
+              color: Colors.transparent,
               child: ListView.builder(
                 scrollDirection: Axis.horizontal,
                 padding: const EdgeInsets.symmetric(horizontal: 16),
@@ -1048,27 +1304,68 @@ class _MessagingTabState extends State<MessagingTab> {
                 itemBuilder: (context, i) {
                   final ch = channels[i];
                   final selected = ch == _selectedChannel;
+                  final isPrivate = ch.startsWith('💬');
                   return GestureDetector(
                     onTap: () => setState(() => _selectedChannel = ch),
                     child: Container(
                       margin: const EdgeInsets.only(right: 8),
-                      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
                       decoration: BoxDecoration(
-                        color: selected ? Colors.blueAccent : Colors.white.withOpacity(0.05),
+                        color: selected
+                            ? (isPrivate ? Colors.purpleAccent : Colors.blueAccent)
+                            : Colors.white.withOpacity(0.05),
                         borderRadius: BorderRadius.circular(20),
+                        border: Border.all(color: selected ? Colors.transparent : Colors.white12),
                       ),
-                      child: Text('# $ch', style: TextStyle(color: selected ? Colors.white : Colors.white54, fontWeight: selected ? FontWeight.bold : FontWeight.normal, fontSize: 13)),
+                      child: Text(
+                        isPrivate ? ch : '# $ch',
+                        style: TextStyle(
+                            color: selected ? Colors.white : Colors.white54,
+                            fontWeight: selected ? FontWeight.bold : FontWeight.normal,
+                            fontSize: 13),
+                      ),
                     ),
                   );
                 },
               ),
             ),
-            const SizedBox(height: 8),
+            const Divider(height: 1, color: Colors.white10),
             Expanded(child: ChatView(clubId: widget.clubId, channel: _selectedChannel)),
           ]);
         },
       ),
     );
+  }
+}
+
+class _MemberPickerSheet extends StatelessWidget {
+  final List<DocumentSnapshot> members;
+  const _MemberPickerSheet({required this.members});
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(mainAxisSize: MainAxisSize.min, children: [
+      const Padding(
+        padding: EdgeInsets.all(20),
+        child: Text('Choisir un membre', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
+      ),
+      ...members.map((doc) {
+        final data = doc.data() as Map<String, dynamic>;
+        final name = data['name'] as String? ?? 'Joueur';
+        return ListTile(
+          leading: CircleAvatar(
+            backgroundColor: Colors.purpleAccent.withOpacity(0.2),
+            child: Text(name[0].toUpperCase(),
+                style: const TextStyle(color: Colors.purpleAccent)),
+          ),
+          title: Text(name),
+          subtitle: Text(data['email'] ?? '',
+              style: const TextStyle(color: Colors.white38, fontSize: 12)),
+          onTap: () => Navigator.pop(context, doc),
+        );
+      }),
+      const SizedBox(height: 16),
+    ]);
   }
 }
 
@@ -1087,12 +1384,15 @@ class _ChatViewState extends State<ChatView> {
     final text = _msgController.text.trim();
     if (text.isEmpty) return;
     final user = FirebaseAuth.instance.currentUser!;
-    final userData = await FirebaseFirestore.instance.collection('users').doc(user.uid).get();
+    final userData =
+        await FirebaseFirestore.instance.collection('users').doc(user.uid).get();
     final name = (userData.data() as Map<String, dynamic>)['name'] ?? 'Joueur';
     _msgController.clear();
     await FirebaseFirestore.instance
-        .collection('clubs').doc(widget.clubId)
-        .collection('messages').add({
+        .collection('clubs')
+        .doc(widget.clubId)
+        .collection('messages')
+        .add({
       'text': text,
       'senderId': user.uid,
       'senderName': name,
@@ -1108,7 +1408,8 @@ class _ChatViewState extends State<ChatView> {
       Expanded(
         child: StreamBuilder<QuerySnapshot>(
           stream: FirebaseFirestore.instance
-              .collection('clubs').doc(widget.clubId)
+              .collection('clubs')
+              .doc(widget.clubId)
               .collection('messages')
               .where('channel', isEqualTo: widget.channel)
               .orderBy('sentAt')
@@ -1116,8 +1417,22 @@ class _ChatViewState extends State<ChatView> {
           builder: (context, snap) {
             if (!snap.hasData) return const Center(child: CircularProgressIndicator());
             final docs = snap.data!.docs;
+            if (docs.isEmpty) {
+              return Center(
+                  child: Column(mainAxisAlignment: MainAxisAlignment.center, children: [
+                Icon(Icons.chat_bubble_outline,
+                    size: 48, color: Colors.white.withOpacity(0.1)),
+                const SizedBox(height: 12),
+                Text(
+                    'Aucun message dans ${widget.channel.startsWith("💬") ? widget.channel : "#${widget.channel}"}',
+                    style: const TextStyle(color: Colors.white38)),
+              ]));
+            }
             WidgetsBinding.instance.addPostFrameCallback((_) {
-              if (_scrollController.hasClients) _scrollController.jumpTo(_scrollController.position.maxScrollExtent);
+              if (_scrollController.hasClients) {
+                _scrollController.animateTo(_scrollController.position.maxScrollExtent,
+                    duration: const Duration(milliseconds: 200), curve: Curves.easeOut);
+              }
             });
             return ListView.builder(
               controller: _scrollController,
@@ -1126,7 +1441,9 @@ class _ChatViewState extends State<ChatView> {
               itemBuilder: (context, i) {
                 final msg = docs[i].data() as Map<String, dynamic>;
                 final isMe = msg['senderId'] == uid;
-                return _MessageBubble(msg: msg, isMe: isMe);
+                final showName = i == 0 ||
+                    (docs[i - 1].data() as Map)['senderId'] != msg['senderId'];
+                return _MessageBubble(msg: msg, isMe: isMe, showName: showName);
               },
             );
           },
@@ -1134,18 +1451,24 @@ class _ChatViewState extends State<ChatView> {
       ),
       Container(
         padding: const EdgeInsets.fromLTRB(16, 8, 16, 16),
-        decoration: BoxDecoration(color: const Color(0xFF18181B), border: Border(top: BorderSide(color: Colors.white.withOpacity(0.08)))),
+        decoration: BoxDecoration(
+          color: const Color(0xFF18181B),
+          border: Border(top: BorderSide(color: Colors.white.withOpacity(0.08))),
+        ),
         child: Row(children: [
           Expanded(
             child: TextField(
               controller: _msgController,
               decoration: InputDecoration(
-                hintText: 'Message #${widget.channel}...',
+                hintText:
+                    'Message dans ${widget.channel.startsWith("💬") ? widget.channel : "#${widget.channel}"}...',
                 hintStyle: const TextStyle(color: Colors.white38),
-                border: OutlineInputBorder(borderRadius: BorderRadius.circular(24), borderSide: BorderSide.none),
+                border: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(24), borderSide: BorderSide.none),
                 filled: true,
                 fillColor: Colors.white.withOpacity(0.08),
-                contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+                contentPadding:
+                    const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
               ),
               onSubmitted: (_) => _sendMessage(),
             ),
@@ -1167,44 +1490,54 @@ class _ChatViewState extends State<ChatView> {
 
 class _MessageBubble extends StatelessWidget {
   final Map<String, dynamic> msg;
-  final bool isMe;
-  const _MessageBubble({required this.msg, required this.isMe});
+  final bool isMe, showName;
+  const _MessageBubble({required this.msg, required this.isMe, required this.showName});
 
   @override
   Widget build(BuildContext context) {
     return Padding(
-      padding: const EdgeInsets.only(bottom: 8),
+      padding: EdgeInsets.only(bottom: showName ? 10 : 3),
       child: Row(
         mainAxisAlignment: isMe ? MainAxisAlignment.end : MainAxisAlignment.start,
         crossAxisAlignment: CrossAxisAlignment.end,
         children: [
           if (!isMe) ...[
-            CircleAvatar(
-              radius: 14,
-              backgroundColor: Colors.blueAccent.withOpacity(0.3),
-              child: Text((msg['senderName'] as String? ?? 'U')[0].toUpperCase(),
-                  style: const TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: Colors.blueAccent)),
-            ),
+            showName
+                ? CircleAvatar(
+                    radius: 14,
+                    backgroundColor: Colors.blueAccent.withOpacity(0.3),
+                    child: Text((msg['senderName'] as String? ?? 'U')[0].toUpperCase(),
+                        style: const TextStyle(
+                            fontSize: 11,
+                            fontWeight: FontWeight.bold,
+                            color: Colors.blueAccent)))
+                : const SizedBox(width: 28),
             const SizedBox(width: 8),
           ],
           Flexible(
-            child: Column(crossAxisAlignment: isMe ? CrossAxisAlignment.end : CrossAxisAlignment.start, children: [
-              if (!isMe)
-                Padding(padding: const EdgeInsets.only(bottom: 2),
-                    child: Text(msg['senderName'] ?? '', style: const TextStyle(color: Colors.white38, fontSize: 11))),
-              Container(
-                padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
-                decoration: BoxDecoration(
-                  color: isMe ? Colors.blueAccent : Colors.white.withOpacity(0.08),
-                  borderRadius: BorderRadius.only(
-                    topLeft: const Radius.circular(16), topRight: const Radius.circular(16),
-                    bottomLeft: Radius.circular(isMe ? 16 : 4),
-                    bottomRight: Radius.circular(isMe ? 4 : 16),
+            child: Column(
+                crossAxisAlignment:
+                    isMe ? CrossAxisAlignment.end : CrossAxisAlignment.start,
+                children: [
+                  if (!isMe && showName)
+                    Padding(
+                        padding: const EdgeInsets.only(bottom: 3),
+                        child: Text(msg['senderName'] ?? '',
+                            style: const TextStyle(color: Colors.white38, fontSize: 11))),
+                  Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+                    decoration: BoxDecoration(
+                      color: isMe ? Colors.blueAccent : Colors.white.withOpacity(0.08),
+                      borderRadius: BorderRadius.only(
+                        topLeft: const Radius.circular(16),
+                        topRight: const Radius.circular(16),
+                        bottomLeft: Radius.circular(isMe ? 16 : 4),
+                        bottomRight: Radius.circular(isMe ? 4 : 16),
+                      ),
+                    ),
+                    child: Text(msg['text'] ?? '', style: const TextStyle(fontSize: 14)),
                   ),
-                ),
-                child: Text(msg['text'] ?? '', style: const TextStyle(fontSize: 14)),
-              ),
-            ]),
+                ]),
           ),
         ],
       ),
@@ -1229,21 +1562,32 @@ class MembersTab extends StatelessWidget {
         title: const Text('Membres', style: TextStyle(fontWeight: FontWeight.bold)),
       ),
       body: StreamBuilder<QuerySnapshot>(
-        stream: FirebaseFirestore.instance.collection('users').where('clubId', isEqualTo: clubId).snapshots(),
+        stream: FirebaseFirestore.instance
+            .collection('users')
+            .where('clubId', isEqualTo: clubId)
+            .snapshots(),
         builder: (context, snap) {
           if (!snap.hasData) return const Center(child: CircularProgressIndicator());
           final docs = snap.data!.docs;
-          final managers = docs.where((d) => (d.data() as Map)['role'] == 'manager').toList();
+          final staff = docs.where((d) => (d.data() as Map)['role'] == 'manager').toList();
           final players = docs.where((d) => (d.data() as Map)['role'] == 'player').toList();
 
           return ListView(
             padding: const EdgeInsets.all(16),
             children: [
-              _sectionHeader('Staff', managers.length),
-              ...managers.map((d) => _MemberTile(data: d.data() as Map<String, dynamic>, isManager: isManager, docId: d.id)),
+              _sectionHeader('Staff', staff.length),
+              ...staff.map((d) => _MemberTile(
+                  data: d.data() as Map<String, dynamic>,
+                  isManager: isManager,
+                  docId: d.id,
+                  clubId: clubId)),
               const SizedBox(height: 16),
               _sectionHeader('Joueurs', players.length),
-              ...players.map((d) => _MemberTile(data: d.data() as Map<String, dynamic>, isManager: isManager, docId: d.id)),
+              ...players.map((d) => _MemberTile(
+                  data: d.data() as Map<String, dynamic>,
+                  isManager: isManager,
+                  docId: d.id,
+                  clubId: clubId)),
             ],
           );
         },
@@ -1255,11 +1599,14 @@ class MembersTab extends StatelessWidget {
     return Padding(
       padding: const EdgeInsets.only(bottom: 8),
       child: Row(children: [
-        Text(title, style: const TextStyle(fontSize: 13, fontWeight: FontWeight.bold, color: Colors.white54)),
+        Text(title,
+            style: const TextStyle(
+                fontSize: 13, fontWeight: FontWeight.bold, color: Colors.white54)),
         const SizedBox(width: 8),
         Container(
           padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
-          decoration: BoxDecoration(color: Colors.white.withOpacity(0.08), borderRadius: BorderRadius.circular(10)),
+          decoration: BoxDecoration(
+              color: Colors.white.withOpacity(0.08), borderRadius: BorderRadius.circular(10)),
           child: Text('$count', style: const TextStyle(fontSize: 11, color: Colors.white54)),
         ),
       ]),
@@ -1270,14 +1617,49 @@ class MembersTab extends StatelessWidget {
 class _MemberTile extends StatelessWidget {
   final Map<String, dynamic> data;
   final bool isManager;
-  final String docId;
-  const _MemberTile({required this.data, required this.isManager, required this.docId});
+  final String docId, clubId;
+  const _MemberTile(
+      {required this.data,
+      required this.isManager,
+      required this.docId,
+      required this.clubId});
+
+  Future<void> _changeRole(BuildContext context) async {
+    final clubDoc =
+        await FirebaseFirestore.instance.collection('clubs').doc(clubId).get();
+    final clubData = clubDoc.data() as Map<String, dynamic>;
+    final customRoles = (clubData['customRoles'] as List?)?.cast<String>() ?? [];
+    final allRoles = [...kPredefinedRoles, ...customRoles];
+
+    if (!context.mounted) return;
+
+    final selected = await showModalBottomSheet<String>(
+      context: context,
+      backgroundColor: const Color(0xFF1C1C1E),
+      shape: const RoundedRectangleBorder(
+          borderRadius: BorderRadius.vertical(top: Radius.circular(24))),
+      builder: (_) => _RolePickerSheet(
+          allRoles: allRoles,
+          clubId: clubId,
+          currentRole: data['customRole'] as String?),
+    );
+
+    if (selected != null) {
+      await FirebaseFirestore.instance
+          .collection('users')
+          .doc(docId)
+          .update({'customRole': selected});
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
     final name = data['name'] as String? ?? 'Joueur';
-    final role = data['role'] as String? ?? 'player';
+    final firestoreRole = data['role'] as String? ?? 'player';
+    final customRole =
+        data['customRole'] as String? ?? (firestoreRole == 'manager' ? 'Manager' : 'Joueur');
     final isCurrentUser = docId == FirebaseAuth.instance.currentUser!.uid;
+    final color = roleColor(customRole);
 
     return Container(
       margin: const EdgeInsets.only(bottom: 8),
@@ -1285,37 +1667,149 @@ class _MemberTile extends StatelessWidget {
       decoration: BoxDecoration(
         color: Colors.white.withOpacity(0.04),
         borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: isCurrentUser ? Colors.blueAccent.withOpacity(0.4) : Colors.white10),
+        border: Border.all(
+            color: isCurrentUser ? Colors.blueAccent.withOpacity(0.4) : Colors.white10),
       ),
       child: Row(children: [
         CircleAvatar(
-          backgroundColor: (role == 'manager' ? Colors.pinkAccent : Colors.blueAccent).withOpacity(0.2),
+          backgroundColor: color.withOpacity(0.2),
           child: Text(name[0].toUpperCase(),
-              style: TextStyle(color: role == 'manager' ? Colors.pinkAccent : Colors.blueAccent, fontWeight: FontWeight.bold)),
+              style: TextStyle(color: color, fontWeight: FontWeight.bold)),
         ),
         const SizedBox(width: 12),
-        Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+        Expanded(
+            child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
           Row(children: [
             Text(name, style: const TextStyle(fontWeight: FontWeight.bold)),
             if (isCurrentUser) ...[
               const SizedBox(width: 6),
-              Container(padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-                  decoration: BoxDecoration(color: Colors.blueAccent.withOpacity(0.2), borderRadius: BorderRadius.circular(4)),
-                  child: const Text('Moi', style: TextStyle(color: Colors.blueAccent, fontSize: 10))),
+              Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                  decoration: BoxDecoration(
+                      color: Colors.blueAccent.withOpacity(0.2),
+                      borderRadius: BorderRadius.circular(4)),
+                  child: const Text('Moi',
+                      style: TextStyle(color: Colors.blueAccent, fontSize: 10))),
             ],
           ]),
-          Text(data['email'] ?? '', style: const TextStyle(color: Colors.white38, fontSize: 12)),
+          Text(data['email'] ?? '',
+              style: const TextStyle(color: Colors.white38, fontSize: 12)),
         ])),
-        Container(
-          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-          decoration: BoxDecoration(
-            color: (role == 'manager' ? Colors.pinkAccent : Colors.blueAccent).withOpacity(0.12),
-            borderRadius: BorderRadius.circular(6),
+        GestureDetector(
+          onTap: isManager ? () => _changeRole(context) : null,
+          child: Container(
+            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+            decoration: BoxDecoration(
+              color: color.withOpacity(0.12),
+              borderRadius: BorderRadius.circular(8),
+              border: Border.all(color: color.withOpacity(0.3)),
+            ),
+            child: Row(mainAxisSize: MainAxisSize.min, children: [
+              Text(customRole,
+                  style: TextStyle(
+                      color: color, fontSize: 11, fontWeight: FontWeight.bold)),
+              if (isManager) ...[
+                const SizedBox(width: 4),
+                Icon(Icons.edit, size: 10, color: color.withOpacity(0.6)),
+              ],
+            ]),
           ),
-          child: Text(role == 'manager' ? 'Manager' : 'Joueur',
-              style: TextStyle(color: role == 'manager' ? Colors.pinkAccent : Colors.blueAccent,
-                  fontSize: 11, fontWeight: FontWeight.bold)),
         ),
+      ]),
+    );
+  }
+}
+
+class _RolePickerSheet extends StatefulWidget {
+  final List<String> allRoles;
+  final String clubId;
+  final String? currentRole;
+  const _RolePickerSheet(
+      {required this.allRoles, required this.clubId, this.currentRole});
+
+  @override
+  State<_RolePickerSheet> createState() => _RolePickerSheetState();
+}
+
+class _RolePickerSheetState extends State<_RolePickerSheet> {
+  final _customController = TextEditingController();
+  bool _showCustomField = false;
+
+  Future<void> _addCustomRole(String role) async {
+    if (role.trim().isEmpty) return;
+    await FirebaseFirestore.instance.collection('clubs').doc(widget.clubId).update({
+      'customRoles': FieldValue.arrayUnion([role.trim()]),
+    });
+    if (mounted) Navigator.pop(context, role.trim());
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: EdgeInsets.only(
+          bottom: MediaQuery.of(context).viewInsets.bottom + 16,
+          top: 24,
+          left: 20,
+          right: 20),
+      child: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.start, children: [
+        const Text('Changer le rôle', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
+        const SizedBox(height: 16),
+        Wrap(
+          spacing: 8,
+          runSpacing: 8,
+          children: widget.allRoles.map((role) {
+            final color = roleColor(role);
+            final isSelected = role == widget.currentRole;
+            return GestureDetector(
+              onTap: () => Navigator.pop(context, role),
+              child: Container(
+                padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+                decoration: BoxDecoration(
+                  color: isSelected ? color.withOpacity(0.2) : Colors.white.withOpacity(0.06),
+                  borderRadius: BorderRadius.circular(20),
+                  border: Border.all(color: isSelected ? color : Colors.white12),
+                ),
+                child: Text(role,
+                    style: TextStyle(
+                        color: isSelected ? color : Colors.white70,
+                        fontWeight:
+                            isSelected ? FontWeight.bold : FontWeight.normal)),
+              ),
+            );
+          }).toList(),
+        ),
+        const SizedBox(height: 16),
+        if (_showCustomField) ...[
+          Row(children: [
+            Expanded(
+              child: TextField(
+                controller: _customController,
+                autofocus: true,
+                decoration: InputDecoration(
+                  hintText: 'Nom du rôle personnalisé',
+                  border: OutlineInputBorder(borderRadius: BorderRadius.circular(10)),
+                  filled: true,
+                  fillColor: Colors.white.withOpacity(0.05),
+                ),
+              ),
+            ),
+            const SizedBox(width: 8),
+            ElevatedButton(
+              style: ElevatedButton.styleFrom(
+                  backgroundColor: Colors.blueAccent,
+                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10))),
+              onPressed: () => _addCustomRole(_customController.text),
+              child: const Text('OK', style: TextStyle(color: Colors.white)),
+            ),
+          ]),
+          const SizedBox(height: 8),
+        ] else
+          TextButton.icon(
+            onPressed: () => setState(() => _showCustomField = true),
+            icon: const Icon(Icons.add, size: 16),
+            label: const Text('Créer un rôle personnalisé'),
+            style: TextButton.styleFrom(foregroundColor: Colors.blueAccent),
+          ),
       ]),
     );
   }
@@ -1328,7 +1822,8 @@ class SettingsTab extends StatelessWidget {
   final String clubId;
   final Map<String, dynamic> userData;
   final bool isManager;
-  const SettingsTab({super.key, required this.clubId, required this.userData, required this.isManager});
+  const SettingsTab(
+      {super.key, required this.clubId, required this.userData, required this.isManager});
 
   @override
   Widget build(BuildContext context) {
@@ -1347,50 +1842,80 @@ class SettingsTab extends StatelessWidget {
           return ListView(
             padding: const EdgeInsets.all(16),
             children: [
-              // Profil utilisateur
+              // Mon profil
               _SettingsSection(title: 'Mon profil', children: [
                 _InfoTile(label: 'Nom', value: userData['name'] ?? ''),
                 _InfoTile(label: 'Email', value: userData['email'] ?? ''),
-                _InfoTile(label: 'Rôle', value: isManager ? 'Manager' : 'Joueur'),
               ]),
               const SizedBox(height: 16),
 
-              // Infos club
-              _SettingsSection(title: 'Mon club', children: [
-                _InfoTile(label: 'Nom', value: club['name'] ?? ''),
-                _InfoTile(label: 'Sport', value: club['sport'] ?? ''),
-                _InfoTile(label: 'Ville', value: club['city'] ?? ''),
-                // Code d'invitation mis en avant
-                Container(
-                  margin: const EdgeInsets.only(top: 8),
+              // Code d'invitation
+              _SettingsSection(title: "Code d'invitation", children: [
+                Padding(
                   padding: const EdgeInsets.all(16),
-                  decoration: BoxDecoration(
-                    color: Colors.amber.withOpacity(0.08),
-                    borderRadius: BorderRadius.circular(10),
-                    border: Border.all(color: Colors.amber.withOpacity(0.3)),
-                  ),
-                  child: Row(mainAxisAlignment: MainAxisAlignment.spaceBetween, children: [
-                    Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                      const Text("Code d'invitation", style: TextStyle(color: Colors.white54, fontSize: 12)),
-                      const SizedBox(height: 4),
-                      Text(club['clubCode'] ?? '', style: const TextStyle(color: Colors.amber, fontSize: 22, fontWeight: FontWeight.bold, letterSpacing: 3)),
-                    ]),
-                    const Icon(Icons.copy, color: Colors.amber),
+                  child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                    const Text(
+                        "Partage ce code à tes membres pour qu'ils rejoignent le club.",
+                        style: TextStyle(color: Colors.white54, fontSize: 13)),
+                    const SizedBox(height: 16),
+                    Container(
+                      padding: const EdgeInsets.all(20),
+                      decoration: BoxDecoration(
+                        color: Colors.amber.withOpacity(0.08),
+                        borderRadius: BorderRadius.circular(12),
+                        border: Border.all(color: Colors.amber.withOpacity(0.4)),
+                      ),
+                      child: Row(mainAxisAlignment: MainAxisAlignment.spaceBetween, children: [
+                        Text(club['clubCode'] ?? '',
+                            style: const TextStyle(
+                                color: Colors.amber,
+                                fontSize: 28,
+                                fontWeight: FontWeight.bold,
+                                letterSpacing: 4)),
+                        GestureDetector(
+                          onTap: () {
+                            ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+                                content: Text('Code copié !'),
+                                backgroundColor: Colors.green,
+                                duration: Duration(seconds: 1)));
+                          },
+                          child: Container(
+                            padding: const EdgeInsets.all(10),
+                            decoration: BoxDecoration(
+                                color: Colors.amber.withOpacity(0.15),
+                                borderRadius: BorderRadius.circular(8)),
+                            child: const Icon(Icons.copy, color: Colors.amber, size: 20),
+                          ),
+                        ),
+                      ]),
+                    ),
                   ]),
                 ),
               ]),
               const SizedBox(height: 16),
 
-              // Gestion club (manager only)
+              // Infos du club
+              _SettingsSection(title: 'Mon club', children: [
+                _InfoTile(label: 'Nom', value: club['name'] ?? ''),
+                _InfoTile(label: 'Sport', value: club['sport'] ?? ''),
+                _InfoTile(label: 'Ville', value: club['city'] ?? ''),
+                if ((club['description'] as String? ?? '').isNotEmpty)
+                  _InfoTile(label: 'Description', value: club['description']),
+              ]),
+              const SizedBox(height: 16),
+
+              // Gestion (manager seulement)
               if (isManager) ...[
                 _SettingsSection(title: 'Gestion du club', children: [
                   _ActionTile(
                     icon: Icons.edit,
                     label: 'Modifier les infos du club',
                     onTap: () => showModalBottomSheet(
-                      context: context, isScrollControlled: true,
+                      context: context,
+                      isScrollControlled: true,
                       backgroundColor: const Color(0xFF1C1C1E),
-                      shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(24))),
+                      shape: const RoundedRectangleBorder(
+                          borderRadius: BorderRadius.vertical(top: Radius.circular(24))),
                       builder: (_) => EditClubSheet(clubId: clubId, clubData: club),
                     ),
                   ),
@@ -1407,6 +1932,7 @@ class SettingsTab extends StatelessWidget {
                   onTap: () => FirebaseAuth.instance.signOut(),
                 ),
               ]),
+              const SizedBox(height: 30),
             ],
           );
         },
@@ -1425,10 +1951,18 @@ class _SettingsSection extends StatelessWidget {
     return Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
       Padding(
         padding: const EdgeInsets.only(bottom: 10),
-        child: Text(title.toUpperCase(), style: const TextStyle(color: Colors.white38, fontSize: 11, fontWeight: FontWeight.bold, letterSpacing: 1.5)),
+        child: Text(title.toUpperCase(),
+            style: const TextStyle(
+                color: Colors.white38,
+                fontSize: 11,
+                fontWeight: FontWeight.bold,
+                letterSpacing: 1.5)),
       ),
       Container(
-        decoration: BoxDecoration(color: Colors.white.withOpacity(0.04), borderRadius: BorderRadius.circular(12), border: Border.all(color: Colors.white10)),
+        decoration: BoxDecoration(
+            color: Colors.white.withOpacity(0.04),
+            borderRadius: BorderRadius.circular(12),
+            border: Border.all(color: Colors.white10)),
         child: Column(children: children),
       ),
     ]);
@@ -1445,7 +1979,10 @@ class _InfoTile extends StatelessWidget {
       padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
       child: Row(mainAxisAlignment: MainAxisAlignment.spaceBetween, children: [
         Text(label, style: const TextStyle(color: Colors.white54)),
-        Text(value, style: const TextStyle(fontWeight: FontWeight.w500)),
+        Flexible(
+            child: Text(value,
+                style: const TextStyle(fontWeight: FontWeight.w500),
+                textAlign: TextAlign.right)),
       ]),
     );
   }
@@ -1456,7 +1993,11 @@ class _ActionTile extends StatelessWidget {
   final String label;
   final VoidCallback onTap;
   final Color color;
-  const _ActionTile({required this.icon, required this.label, required this.onTap, this.color = Colors.white});
+  const _ActionTile(
+      {required this.icon,
+      required this.label,
+      required this.onTap,
+      this.color = Colors.white});
 
   @override
   Widget build(BuildContext context) {
@@ -1516,28 +2057,40 @@ class _EditClubSheetState extends State<EditClubSheet> {
   @override
   Widget build(BuildContext context) {
     return Padding(
-      padding: EdgeInsets.only(bottom: MediaQuery.of(context).viewInsets.bottom, left: 24, right: 24, top: 24),
+      padding: EdgeInsets.only(
+          bottom: MediaQuery.of(context).viewInsets.bottom,
+          left: 24,
+          right: 24,
+          top: 24),
       child: SingleChildScrollView(
-        child: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.start, children: [
-          const Text('Modifier le club', style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold)),
-          const SizedBox(height: 20),
-          _field(_nameController, 'Nom du club'),
-          _field(_sportController, 'Sport'),
-          _field(_cityController, 'Ville'),
-          _field(_descController, 'Description', maxLines: 3),
-          const SizedBox(height: 8),
-          SizedBox(
-            width: double.infinity,
-            child: ElevatedButton(
-              style: ElevatedButton.styleFrom(backgroundColor: Colors.blueAccent, padding: const EdgeInsets.symmetric(vertical: 16), shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12))),
-              onPressed: _loading ? null : _save,
-              child: _loading
-                  ? const CircularProgressIndicator(color: Colors.white, strokeWidth: 2)
-                  : const Text('ENREGISTRER', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
-            ),
-          ),
-          const SizedBox(height: 16),
-        ]),
+        child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              const Text('Modifier le club',
+                  style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold)),
+              const SizedBox(height: 20),
+              _field(_nameController, 'Nom du club'),
+              _field(_sportController, 'Sport'),
+              _field(_cityController, 'Ville'),
+              _field(_descController, 'Description', maxLines: 3),
+              const SizedBox(height: 8),
+              SizedBox(
+                width: double.infinity,
+                child: ElevatedButton(
+                  style: ElevatedButton.styleFrom(
+                      backgroundColor: Colors.blueAccent,
+                      padding: const EdgeInsets.symmetric(vertical: 16),
+                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12))),
+                  onPressed: _loading ? null : _save,
+                  child: _loading
+                      ? const CircularProgressIndicator(color: Colors.white, strokeWidth: 2)
+                      : const Text('ENREGISTRER',
+                          style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
+                ),
+              ),
+              const SizedBox(height: 16),
+            ]),
       ),
     );
   }
@@ -1548,7 +2101,11 @@ class _EditClubSheetState extends State<EditClubSheet> {
       child: TextField(
         controller: c,
         maxLines: maxLines,
-        decoration: InputDecoration(labelText: label, border: OutlineInputBorder(borderRadius: BorderRadius.circular(10)), filled: true, fillColor: Colors.white.withOpacity(0.05)),
+        decoration: InputDecoration(
+            labelText: label,
+            border: OutlineInputBorder(borderRadius: BorderRadius.circular(10)),
+            filled: true,
+            fillColor: Colors.white.withOpacity(0.05)),
       ),
     );
   }
