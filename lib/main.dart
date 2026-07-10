@@ -691,6 +691,228 @@ class _StatCard extends StatelessWidget {
   }
 }
 
+// ══════════════════════════════════════════
+// SYSTÈME DE PRÉSENCE (présent/absent/sais pas)
+// ══════════════════════════════════════════
+
+// Statuts possibles
+const String kPresent = 'present';
+const String kAbsent = 'absent';
+const String kMaybe = 'maybe';
+
+String myStatus(Map<String, dynamic> data, String uid) {
+  final present = (data['attendees'] as List? ?? []);
+  final absent = (data['absentees'] as List? ?? []);
+  final maybe = (data['maybes'] as List? ?? []);
+  if (present.contains(uid)) return kPresent;
+  if (absent.contains(uid)) return kAbsent;
+  if (maybe.contains(uid)) return kMaybe;
+  return '';
+}
+
+Future<void> setStatus(String eventId, String uid, String newStatus) async {
+  final ref = FirebaseFirestore.instance.collection('events').doc(eventId);
+  // Retirer des 3 listes d'abord
+  await ref.update({
+    'attendees': FieldValue.arrayRemove([uid]),
+    'absentees': FieldValue.arrayRemove([uid]),
+    'maybes': FieldValue.arrayRemove([uid]),
+  });
+  // Puis ajouter dans la bonne liste
+  if (newStatus == kPresent) {
+    await ref.update({'attendees': FieldValue.arrayUnion([uid])});
+  } else if (newStatus == kAbsent) {
+    await ref.update({'absentees': FieldValue.arrayUnion([uid])});
+  } else if (newStatus == kMaybe) {
+    await ref.update({'maybes': FieldValue.arrayUnion([uid])});
+  }
+}
+
+// Widget 3 boutons style SportEasy
+class _PresenceButtons extends StatelessWidget {
+  final String eventId, uid, currentStatus;
+  const _PresenceButtons(
+      {required this.eventId, required this.uid, required this.currentStatus});
+
+  @override
+  Widget build(BuildContext context) {
+    return Row(children: [
+      Expanded(child: _StatusBtn(
+        label: 'Présent', icon: Icons.check_circle_outline,
+        color: Colors.greenAccent, isSelected: currentStatus == kPresent,
+        onTap: () => setStatus(eventId, uid, currentStatus == kPresent ? '' : kPresent),
+      )),
+      const SizedBox(width: 8),
+      Expanded(child: _StatusBtn(
+        label: 'Absent', icon: Icons.cancel_outlined,
+        color: Colors.redAccent, isSelected: currentStatus == kAbsent,
+        onTap: () => setStatus(eventId, uid, currentStatus == kAbsent ? '' : kAbsent),
+      )),
+      const SizedBox(width: 8),
+      Expanded(child: _StatusBtn(
+        label: '?', icon: Icons.help_outline,
+        color: Colors.orangeAccent, isSelected: currentStatus == kMaybe,
+        onTap: () => setStatus(eventId, uid, currentStatus == kMaybe ? '' : kMaybe),
+      )),
+    ]);
+  }
+}
+
+class _StatusBtn extends StatelessWidget {
+  final String label;
+  final IconData icon;
+  final Color color;
+  final bool isSelected;
+  final VoidCallback onTap;
+  const _StatusBtn({required this.label, required this.icon, required this.color,
+      required this.isSelected, required this.onTap});
+
+  @override
+  Widget build(BuildContext context) {
+    return GestureDetector(
+      onTap: onTap,
+      child: AnimatedContainer(
+        duration: const Duration(milliseconds: 200),
+        padding: const EdgeInsets.symmetric(vertical: 10),
+        decoration: BoxDecoration(
+          color: isSelected ? color.withOpacity(0.2) : Colors.white.withOpacity(0.04),
+          borderRadius: BorderRadius.circular(10),
+          border: Border.all(color: isSelected ? color : Colors.white12, width: isSelected ? 1.5 : 1),
+        ),
+        child: Column(mainAxisSize: MainAxisSize.min, children: [
+          Icon(icon, color: isSelected ? color : Colors.white38, size: 20),
+          const SizedBox(height: 4),
+          Text(label, style: TextStyle(
+              color: isSelected ? color : Colors.white38,
+              fontSize: 11, fontWeight: isSelected ? FontWeight.bold : FontWeight.normal)),
+        ]),
+      ),
+    );
+  }
+}
+
+// Liste des membres par statut (style SportEasy)
+class _AttendeesList extends StatelessWidget {
+  final String clubId;
+  final Map<String, dynamic> eventData;
+  const _AttendeesList({required this.clubId, required this.eventData});
+
+  @override
+  Widget build(BuildContext context) {
+    final present = (eventData['attendees'] as List? ?? []).cast<String>();
+    final absent = (eventData['absentees'] as List? ?? []).cast<String>();
+    final maybe = (eventData['maybes'] as List? ?? []).cast<String>();
+    final total = present.length + absent.length + maybe.length;
+
+    return StreamBuilder<QuerySnapshot>(
+      stream: FirebaseFirestore.instance
+          .collection('users').where('clubId', isEqualTo: clubId).snapshots(),
+      builder: (context, snap) {
+        if (!snap.hasData) return const SizedBox();
+        final users = {for (var d in snap.data!.docs) d.id: d.data() as Map<String, dynamic>};
+
+        return Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+          // Compteurs résumé
+          Row(children: [
+            _CountChip(count: present.length, color: Colors.greenAccent, label: 'Présents'),
+            const SizedBox(width: 8),
+            _CountChip(count: absent.length, color: Colors.redAccent, label: 'Absents'),
+            const SizedBox(width: 8),
+            _CountChip(count: maybe.length, color: Colors.orangeAccent, label: '?'),
+            const Spacer(),
+            Text('$total réponses', style: const TextStyle(color: Colors.white38, fontSize: 12)),
+          ]),
+          const SizedBox(height: 12),
+
+          // Liste présents
+          if (present.isNotEmpty) ...[
+            _listHeader('✅  Présents', present.length, Colors.greenAccent),
+            ...present.map((uid) => _UserTile(userData: users[uid], color: Colors.greenAccent)),
+            const SizedBox(height: 8),
+          ],
+
+          // Liste absents
+          if (absent.isNotEmpty) ...[
+            _listHeader('❌  Absents', absent.length, Colors.redAccent),
+            ...absent.map((uid) => _UserTile(userData: users[uid], color: Colors.redAccent)),
+            const SizedBox(height: 8),
+          ],
+
+          // Liste incertains
+          if (maybe.isNotEmpty) ...[
+            _listHeader('❓  Incertains', maybe.length, Colors.orangeAccent),
+            ...maybe.map((uid) => _UserTile(userData: users[uid], color: Colors.orangeAccent)),
+          ],
+        ]);
+      },
+    );
+  }
+
+  Widget _listHeader(String label, int count, Color color) {
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 6),
+      child: Row(children: [
+        Text(label, style: TextStyle(color: color, fontSize: 12, fontWeight: FontWeight.bold)),
+        const SizedBox(width: 6),
+        Text('($count)', style: TextStyle(color: color.withOpacity(0.6), fontSize: 12)),
+      ]),
+    );
+  }
+}
+
+class _CountChip extends StatelessWidget {
+  final int count;
+  final Color color;
+  final String label;
+  const _CountChip({required this.count, required this.color, required this.label});
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+      decoration: BoxDecoration(
+        color: color.withOpacity(0.1),
+        borderRadius: BorderRadius.circular(8),
+        border: Border.all(color: color.withOpacity(0.3)),
+      ),
+      child: Row(mainAxisSize: MainAxisSize.min, children: [
+        Text('$count', style: TextStyle(color: color, fontWeight: FontWeight.bold, fontSize: 14)),
+        const SizedBox(width: 4),
+        Text(label, style: TextStyle(color: color.withOpacity(0.8), fontSize: 11)),
+      ]),
+    );
+  }
+}
+
+class _UserTile extends StatelessWidget {
+  final Map<String, dynamic>? userData;
+  final Color color;
+  const _UserTile({required this.userData, required this.color});
+
+  @override
+  Widget build(BuildContext context) {
+    final name = userData?['name'] as String? ?? 'Joueur';
+    final customRole = userData?['customRole'] as String? ?? '';
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 6),
+      child: Row(children: [
+        CircleAvatar(
+          radius: 16,
+          backgroundColor: color.withOpacity(0.15),
+          child: Text(name[0].toUpperCase(),
+              style: TextStyle(color: color, fontSize: 13, fontWeight: FontWeight.bold)),
+        ),
+        const SizedBox(width: 10),
+        Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+          Text(name, style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w500)),
+          if (customRole.isNotEmpty)
+            Text(customRole, style: TextStyle(color: roleColor(customRole), fontSize: 11)),
+        ])),
+      ]),
+    );
+  }
+}
+
 class _EventMiniCard extends StatelessWidget {
   final Map<String, dynamic> data;
   final String eventId, uid;
@@ -706,8 +928,24 @@ class _EventMiniCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final type = data['type'] ?? 'Autre';
+    final status = myStatus(data, uid);
+    final color = status == kPresent
+        ? Colors.greenAccent
+        : status == kAbsent
+            ? Colors.redAccent
+            : status == kMaybe
+                ? Colors.orangeAccent
+                : Colors.white38;
+    final statusLabel = status == kPresent
+        ? '✓ Présent'
+        : status == kAbsent
+            ? '✗ Absent'
+            : status == kMaybe
+                ? '? Incertain'
+                : 'Répondre';
+
     return Container(
-      padding: const EdgeInsets.all(16),
+      padding: const EdgeInsets.all(14),
       decoration: BoxDecoration(
         color: Colors.white.withOpacity(0.05),
         borderRadius: BorderRadius.circular(12),
@@ -715,46 +953,31 @@ class _EventMiniCard extends StatelessWidget {
       ),
       child: Row(children: [
         Container(
-          padding: const EdgeInsets.all(12),
+          padding: const EdgeInsets.all(10),
           decoration: BoxDecoration(
             color: (type == 'Match' ? Colors.pinkAccent : Colors.blueAccent).withOpacity(0.15),
             borderRadius: BorderRadius.circular(10),
           ),
           child: Icon(type == 'Match' ? Icons.emoji_events : Icons.fitness_center,
-              color: type == 'Match' ? Colors.pinkAccent : Colors.blueAccent),
+              color: type == 'Match' ? Colors.pinkAccent : Colors.blueAccent, size: 20),
         ),
-        const SizedBox(width: 14),
-        Expanded(
-            child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+        const SizedBox(width: 12),
+        Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
           Text(data['title'] ?? '', style: const TextStyle(fontWeight: FontWeight.bold)),
-          const SizedBox(height: 4),
-          Text(
-              '${formatDate(data['startDate'] ?? '')} · ${formatTime(data['startDate'] ?? '')}',
+          const SizedBox(height: 3),
+          Text('${formatDate(data['startDate'] ?? '')} · ${formatTime(data['startDate'] ?? '')}',
               style: const TextStyle(color: Colors.white54, fontSize: 12)),
           Text(data['location'] ?? '', style: const TextStyle(color: Colors.white38, fontSize: 12)),
         ])),
-        GestureDetector(
-          onTap: () {
-            final ref = FirebaseFirestore.instance.collection('events').doc(eventId);
-            if (amIPresent) {
-              ref.update({'attendees': FieldValue.arrayRemove([uid])});
-            } else {
-              ref.update({'attendees': FieldValue.arrayUnion([uid])});
-            }
-          },
-          child: Container(
-            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
-            decoration: BoxDecoration(
-              color: amIPresent ? Colors.greenAccent.withOpacity(0.15) : Colors.white.withOpacity(0.05),
-              borderRadius: BorderRadius.circular(8),
-              border: Border.all(color: amIPresent ? Colors.greenAccent : Colors.white24),
-            ),
-            child: Text(amIPresent ? '✓ Présent' : 'Répondre',
-                style: TextStyle(
-                    fontSize: 12,
-                    color: amIPresent ? Colors.greenAccent : Colors.white54,
-                    fontWeight: FontWeight.bold)),
+        Container(
+          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+          decoration: BoxDecoration(
+            color: color.withOpacity(0.12),
+            borderRadius: BorderRadius.circular(8),
+            border: Border.all(color: color.withOpacity(0.4)),
           ),
+          child: Text(statusLabel,
+              style: TextStyle(fontSize: 11, color: color, fontWeight: FontWeight.bold)),
         ),
       ]),
     );
@@ -818,15 +1041,12 @@ class EventsTab extends StatelessWidget {
             itemBuilder: (context, i) {
               final doc = snap.data!.docs[i];
               final data = doc.data() as Map<String, dynamic>;
-              final attendees = data['attendees'] as List? ?? [];
-              final amIPresent = attendees.contains(uid);
               return _EventCard(
                   data: data,
                   eventId: doc.id,
-                  attendees: attendees,
-                  amIPresent: amIPresent,
                   uid: uid,
-                  isManager: isManager);
+                  isManager: isManager,
+                  clubId: clubId);
             },
           );
         },
@@ -837,22 +1057,24 @@ class EventsTab extends StatelessWidget {
 
 class _EventCard extends StatelessWidget {
   final Map<String, dynamic> data;
-  final String eventId, uid;
-  final List attendees;
-  final bool amIPresent, isManager;
+  final String eventId, uid, clubId;
+  final bool isManager;
   const _EventCard(
       {required this.data,
       required this.eventId,
-      required this.attendees,
-      required this.amIPresent,
       required this.uid,
-      required this.isManager});
+      required this.isManager,
+      required this.clubId});
 
   @override
   Widget build(BuildContext context) {
     final type = data['type'] ?? 'Autre';
     final isMatch = type == 'Match';
     final color = isMatch ? Colors.pinkAccent : Colors.blueAccent;
+    final status = myStatus(data, uid);
+    final present = (data['attendees'] as List? ?? []);
+    final absent = (data['absentees'] as List? ?? []);
+    final maybe = (data['maybes'] as List? ?? []);
 
     return Container(
       margin: const EdgeInsets.only(bottom: 16),
@@ -862,6 +1084,7 @@ class _EventCard extends StatelessWidget {
         border: Border.all(color: Colors.white10),
       ),
       child: Column(children: [
+        // ── Header ──
         Container(
           padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
           decoration: BoxDecoration(
@@ -876,12 +1099,14 @@ class _EventCard extends StatelessWidget {
                   style: TextStyle(color: color, fontWeight: FontWeight.bold, fontSize: 12)),
             ]),
             Row(children: [
-              const Icon(Icons.people, size: 14, color: Colors.amber),
-              const SizedBox(width: 4),
-              Text('${attendees.length}',
-                  style: const TextStyle(color: Colors.amber, fontWeight: FontWeight.bold)),
+              // Compteurs rapides
+              _miniCount(present.length, Colors.greenAccent, Icons.check_circle, context),
+              const SizedBox(width: 6),
+              _miniCount(absent.length, Colors.redAccent, Icons.cancel, context),
+              const SizedBox(width: 6),
+              _miniCount(maybe.length, Colors.orangeAccent, Icons.help, context),
               if (isManager) ...[
-                const SizedBox(width: 8),
+                const SizedBox(width: 12),
                 GestureDetector(
                   onTap: () async {
                     final confirm = await showDialog<bool>(
@@ -909,6 +1134,8 @@ class _EventCard extends StatelessWidget {
             ]),
           ]),
         ),
+
+        // ── Body ──
         Padding(
           padding: const EdgeInsets.all(16),
           child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
@@ -922,35 +1149,28 @@ class _EventCard extends StatelessWidget {
               _infoRow(Icons.info_outline, data['description']),
             if ((data['recurrence'] as String? ?? 'Aucune') != 'Aucune')
               _infoRow(Icons.repeat, data['recurrence']),
+            const SizedBox(height: 16),
+
+            // ── 3 boutons de présence ──
+            _PresenceButtons(eventId: eventId, uid: uid, currentStatus: status),
+            const SizedBox(height: 16),
+
+            // ── Liste des participants ──
+            const Divider(color: Colors.white10),
             const SizedBox(height: 12),
-            SizedBox(
-              width: double.infinity,
-              child: ElevatedButton(
-                style: ElevatedButton.styleFrom(
-                  backgroundColor:
-                      amIPresent ? Colors.white10 : Colors.greenAccent.withOpacity(0.15),
-                  side: BorderSide(color: amIPresent ? Colors.white24 : Colors.greenAccent),
-                  padding: const EdgeInsets.symmetric(vertical: 14),
-                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
-                ),
-                onPressed: () {
-                  final ref = FirebaseFirestore.instance.collection('events').doc(eventId);
-                  if (amIPresent) {
-                    ref.update({'attendees': FieldValue.arrayRemove([uid])});
-                  } else {
-                    ref.update({'attendees': FieldValue.arrayUnion([uid])});
-                  }
-                },
-                child: Text(amIPresent ? '✗  JE SERAI ABSENT' : '✓  JE SERAI PRÉSENT',
-                    style: TextStyle(
-                        color: amIPresent ? Colors.white38 : Colors.greenAccent,
-                        fontWeight: FontWeight.bold)),
-              ),
-            ),
+            _AttendeesList(clubId: clubId, eventData: data),
           ]),
         ),
       ]),
     );
+  }
+
+  Widget _miniCount(int count, Color color, IconData icon, BuildContext context) {
+    return Row(mainAxisSize: MainAxisSize.min, children: [
+      Icon(icon, color: color, size: 13),
+      const SizedBox(width: 3),
+      Text('$count', style: TextStyle(color: color, fontSize: 12, fontWeight: FontWeight.bold)),
+    ]);
   }
 
   Widget _infoRow(IconData icon, String text) {
@@ -1025,6 +1245,8 @@ class _CreateEventSheetState extends State<CreateEventSheet> {
       'endDate': _endDate.toIso8601String(),
       'recurrence': _recurrence,
       'attendees': [],
+      'absentees': [],
+      'maybes': [],
       'clubId': widget.clubId,
       'createdAt': FieldValue.serverTimestamp(),
     });
