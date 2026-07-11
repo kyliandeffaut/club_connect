@@ -1391,8 +1391,13 @@ class _CreateEventSheetState extends State<CreateEventSheet> {
 }
 
 // ══════════════════════════════════════════
-// ONGLET 3 — MESSAGERIE
+// ONGLET 3 — MESSAGERIE (style WhatsApp)
 // ══════════════════════════════════════════
+
+// Modèle d'un canal Firestore
+// Structure dans Firestore collection 'channels' (sous-collection du club) :
+// { name, type: 'public'|'private', members: [uid...], lastMessage, lastMessageAt, createdBy }
+
 class MessagingTab extends StatefulWidget {
   final String clubId;
   final bool isManager;
@@ -1402,195 +1407,432 @@ class MessagingTab extends StatefulWidget {
 }
 
 class _MessagingTabState extends State<MessagingTab> {
+  // ignore unused field warning — kept for compatibility
   String _selectedChannel = 'Général';
 
   Future<void> _createChannel() async {
-    final controller = TextEditingController();
-    final name = await showDialog<String>(
-      context: context,
-      builder: (_) => AlertDialog(
-        backgroundColor: const Color(0xFF1C1C1E),
-        title: const Text('Nouveau canal'),
-        content: TextField(
-          controller: controller,
-          autofocus: true,
-          decoration: InputDecoration(
-            hintText: 'Nom du canal (ex: U13, Seniors...)',
-            border: OutlineInputBorder(borderRadius: BorderRadius.circular(10)),
-            filled: true,
-            fillColor: Colors.white.withOpacity(0.05),
-          ),
-        ),
-        actions: [
-          TextButton(onPressed: () => Navigator.pop(context), child: const Text('Annuler')),
-          TextButton(
-            onPressed: () => Navigator.pop(context, controller.text.trim()),
-            child: const Text('Créer',
-                style: TextStyle(color: Colors.blueAccent, fontWeight: FontWeight.bold)),
-          ),
-        ],
-      ),
-    );
-    if (name != null && name.isNotEmpty) {
-      await FirebaseFirestore.instance.collection('clubs').doc(widget.clubId).update({
-        'channels': FieldValue.arrayUnion([name]),
-      });
-      setState(() => _selectedChannel = name);
-    }
-  }
-
-  Future<void> _createPrivateDiscussion() async {
-    final membersSnap = await FirebaseFirestore.instance
-        .collection('users')
-        .where('clubId', isEqualTo: widget.clubId)
-        .get();
     final currentUid = FirebaseAuth.instance.currentUser!.uid;
+    // Charger les membres du club
+    final membersSnap = await FirebaseFirestore.instance
+        .collection('users').where('clubId', isEqualTo: widget.clubId).get();
     final others = membersSnap.docs.where((d) => d.id != currentUid).toList();
 
     if (!mounted) return;
 
-    final selected = await showModalBottomSheet<DocumentSnapshot>(
+    // Sheet de création de canal avec nom + sélection des membres
+    final result = await showModalBottomSheet<Map<String, dynamic>>(
       context: context,
+      isScrollControlled: true,
       backgroundColor: const Color(0xFF1C1C1E),
-      shape: const RoundedRectangleBorder(
-          borderRadius: BorderRadius.vertical(top: Radius.circular(24))),
-      builder: (_) => _MemberPickerSheet(members: others),
+      shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(24))),
+      builder: (_) => _CreateChannelSheet(members: others, currentUid: currentUid),
     );
 
-    if (selected != null) {
-      final otherData = selected.data() as Map<String, dynamic>;
-      final channelName = '💬 ${otherData['name']}';
-      await FirebaseFirestore.instance.collection('clubs').doc(widget.clubId).update({
-        'channels': FieldValue.arrayUnion([channelName]),
+    if (result != null) {
+      final name = result['name'] as String;
+      final selectedMembers = result['members'] as List<String>;
+      // Inclure le créateur
+      final allMembers = [...selectedMembers, currentUid];
+      await FirebaseFirestore.instance
+          .collection('clubs').doc(widget.clubId)
+          .collection('channels').add({
+        'name': name,
+        'type': 'group',
+        'members': allMembers,
+        'createdBy': currentUid,
+        'lastMessage': '',
+        'lastMessageAt': FieldValue.serverTimestamp(),
+        'createdAt': FieldValue.serverTimestamp(),
       });
-      setState(() => _selectedChannel = channelName);
     }
   }
 
   @override
   Widget build(BuildContext context) {
+    final uid = FirebaseAuth.instance.currentUser!.uid;
     return Scaffold(
       appBar: AppBar(
-        backgroundColor: Colors.transparent,
+        backgroundColor: const Color(0xFF18181B),
         elevation: 0,
         title: const Text('Messages', style: TextStyle(fontWeight: FontWeight.bold)),
         actions: [
-          PopupMenuButton<String>(
-            icon: const Icon(Icons.add_circle, color: Colors.blueAccent, size: 28),
-            color: const Color(0xFF1C1C1E),
-            onSelected: (v) {
-              if (v == 'canal') _createChannel();
-              if (v == 'prive') _createPrivateDiscussion();
-            },
-            itemBuilder: (_) => [
-              if (widget.isManager)
-                const PopupMenuItem(
-                    value: 'canal',
-                    child: Row(children: [
-                      Icon(Icons.tag, size: 18, color: Colors.blueAccent),
-                      SizedBox(width: 10),
-                      Text('Nouveau canal'),
-                    ])),
-              const PopupMenuItem(
-                  value: 'prive',
-                  child: Row(children: [
-                    Icon(Icons.person, size: 18, color: Colors.purpleAccent),
-                    SizedBox(width: 10),
-                    Text('Discussion privée'),
-                  ])),
-            ],
-          ),
+          if (widget.isManager)
+            IconButton(
+              icon: const Icon(Icons.add_circle, color: Colors.blueAccent, size: 28),
+              onPressed: _createChannel,
+            ),
         ],
       ),
-      body: StreamBuilder<DocumentSnapshot>(
-        stream: FirebaseFirestore.instance.collection('clubs').doc(widget.clubId).snapshots(),
+      // Liste style WhatsApp de toutes les conversations
+      body: StreamBuilder<QuerySnapshot>(
+        stream: FirebaseFirestore.instance
+            .collection('clubs').doc(widget.clubId)
+            .collection('channels')
+            .where('members', arrayContains: uid)
+            .orderBy('lastMessageAt', descending: true)
+            .snapshots(),
         builder: (context, snap) {
-          if (!snap.hasData) return const Center(child: CircularProgressIndicator());
-          final club = snap.data!.data() as Map<String, dynamic>;
-          final channels = (club['channels'] as List?)?.cast<String>() ?? ['Général'];
-
-          if (!channels.contains(_selectedChannel) && channels.isNotEmpty) {
-            WidgetsBinding.instance.addPostFrameCallback((_) {
-              setState(() => _selectedChannel = channels.first);
-            });
+          if (snap.connectionState == ConnectionState.waiting) {
+            return const Center(child: CircularProgressIndicator());
+          }
+          if (!snap.hasData || snap.data!.docs.isEmpty) {
+            return Center(child: Column(mainAxisAlignment: MainAxisAlignment.center, children: [
+              Icon(Icons.chat_bubble_outline, size: 56, color: Colors.white.withOpacity(0.1)),
+              const SizedBox(height: 16),
+              const Text('Aucune conversation', style: TextStyle(color: Colors.white38, fontSize: 16)),
+              const SizedBox(height: 8),
+              if (widget.isManager)
+                const Text('Crée un canal avec le bouton +',
+                    style: TextStyle(color: Colors.white24, fontSize: 13)),
+            ]));
           }
 
-          return Column(children: [
-            Container(
-              height: 48,
-              color: Colors.transparent,
-              child: ListView.builder(
-                scrollDirection: Axis.horizontal,
-                padding: const EdgeInsets.symmetric(horizontal: 16),
-                itemCount: channels.length,
-                itemBuilder: (context, i) {
-                  final ch = channels[i];
-                  final selected = ch == _selectedChannel;
-                  final isPrivate = ch.startsWith('💬');
-                  return GestureDetector(
-                    onTap: () => setState(() => _selectedChannel = ch),
-                    child: Container(
-                      margin: const EdgeInsets.only(right: 8),
-                      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
-                      decoration: BoxDecoration(
-                        color: selected
-                            ? (isPrivate ? Colors.purpleAccent : Colors.blueAccent)
-                            : Colors.white.withOpacity(0.05),
-                        borderRadius: BorderRadius.circular(20),
-                        border: Border.all(color: selected ? Colors.transparent : Colors.white12),
-                      ),
-                      child: Text(
-                        isPrivate ? ch : '# $ch',
-                        style: TextStyle(
-                            color: selected ? Colors.white : Colors.white54,
-                            fontWeight: selected ? FontWeight.bold : FontWeight.normal,
-                            fontSize: 13),
-                      ),
-                    ),
-                  );
-                },
-              ),
-            ),
-            const Divider(height: 1, color: Colors.white10),
-            Expanded(child: ChatView(clubId: widget.clubId, channel: _selectedChannel)),
-          ]);
+          final docs = snap.data!.docs;
+          return ListView.builder(
+            itemCount: docs.length,
+            itemBuilder: (context, i) {
+              final ch = docs[i].data() as Map<String, dynamic>;
+              final chId = docs[i].id;
+              final chName = ch['name'] as String? ?? 'Canal';
+              final lastMsg = ch['lastMessage'] as String? ?? '';
+              final isPrivate = ch['type'] == 'private';
+              final members = (ch['members'] as List? ?? []).cast<String>();
+
+              return _ChannelListTile(
+                channelId: chId,
+                channelData: ch,
+                channelName: chName,
+                lastMessage: lastMsg,
+                isPrivate: isPrivate,
+                memberCount: members.length,
+                clubId: widget.clubId,
+                uid: uid,
+              );
+            },
+          );
         },
       ),
     );
   }
 }
 
-class _MemberPickerSheet extends StatelessWidget {
-  final List<DocumentSnapshot> members;
-  const _MemberPickerSheet({required this.members});
+// Tuile de conversation style WhatsApp
+class _ChannelListTile extends StatelessWidget {
+  final String channelId, channelName, lastMessage, clubId, uid;
+  final Map<String, dynamic> channelData;
+  final bool isPrivate;
+  final int memberCount;
+
+  const _ChannelListTile({
+    required this.channelId, required this.channelName, required this.lastMessage,
+    required this.isPrivate, required this.memberCount, required this.clubId,
+    required this.uid, required this.channelData,
+  });
 
   @override
   Widget build(BuildContext context) {
-    return Column(mainAxisSize: MainAxisSize.min, children: [
-      const Padding(
-        padding: EdgeInsets.all(20),
-        child: Text('Choisir un membre', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
-      ),
-      ...members.map((doc) {
-        final data = doc.data() as Map<String, dynamic>;
-        final name = data['name'] as String? ?? 'Joueur';
-        return ListTile(
-          leading: CircleAvatar(
-            backgroundColor: Colors.purpleAccent.withOpacity(0.2),
-            child: Text(name[0].toUpperCase(),
-                style: const TextStyle(color: Colors.purpleAccent)),
+    final color = isPrivate ? Colors.purpleAccent : Colors.blueAccent;
+    final icon = isPrivate ? Icons.person : Icons.tag;
+
+    return InkWell(
+      onTap: () => Navigator.push(context, MaterialPageRoute(
+        builder: (_) => ChatScreen(
+          clubId: clubId, channelId: channelId,
+          channelName: channelName, isPrivate: isPrivate, uid: uid,
+        ),
+      )),
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+        decoration: BoxDecoration(
+          border: Border(bottom: BorderSide(color: Colors.white.withOpacity(0.05))),
+        ),
+        child: Row(children: [
+          // Avatar du canal
+          Container(
+            width: 48, height: 48,
+            decoration: BoxDecoration(
+              shape: BoxShape.circle,
+              color: color.withOpacity(0.15),
+              border: Border.all(color: color.withOpacity(0.3)),
+            ),
+            child: Center(child: Icon(icon, color: color, size: 22)),
           ),
-          title: Text(name),
-          subtitle: Text(data['email'] ?? '',
-              style: const TextStyle(color: Colors.white38, fontSize: 12)),
-          onTap: () => Navigator.pop(context, doc),
-        );
-      }),
-      const SizedBox(height: 16),
-    ]);
+          const SizedBox(width: 14),
+          Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+            Row(mainAxisAlignment: MainAxisAlignment.spaceBetween, children: [
+              Text(channelName, style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 15)),
+              if (!isPrivate)
+                Text('$memberCount membres',
+                    style: const TextStyle(color: Colors.white38, fontSize: 11)),
+            ]),
+            const SizedBox(height: 3),
+            Text(
+              lastMessage.isEmpty ? 'Aucun message' : lastMessage,
+              style: TextStyle(
+                color: lastMessage.isEmpty ? Colors.white24 : Colors.white54,
+                fontSize: 13,
+              ),
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+            ),
+          ])),
+          const SizedBox(width: 8),
+          const Icon(Icons.chevron_right, color: Colors.white24, size: 18),
+        ]),
+      ),
+    );
   }
 }
 
+// Sheet de création de canal
+class _CreateChannelSheet extends StatefulWidget {
+  final List<DocumentSnapshot> members;
+  final String currentUid;
+  const _CreateChannelSheet({required this.members, required this.currentUid});
+  @override
+  State<_CreateChannelSheet> createState() => _CreateChannelSheetState();
+}
+
+class _CreateChannelSheetState extends State<_CreateChannelSheet> {
+  final _nameController = TextEditingController();
+  final Set<String> _selectedUids = {};
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: EdgeInsets.only(bottom: MediaQuery.of(context).viewInsets.bottom),
+      child: Column(mainAxisSize: MainAxisSize.min, children: [
+        Padding(
+          padding: const EdgeInsets.fromLTRB(20, 20, 20, 0),
+          child: Row(mainAxisAlignment: MainAxisAlignment.spaceBetween, children: [
+            const Text('Nouveau canal', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
+            IconButton(icon: const Icon(Icons.close), onPressed: () => Navigator.pop(context)),
+          ]),
+        ),
+        Padding(
+          padding: const EdgeInsets.all(16),
+          child: TextField(
+            controller: _nameController,
+            autofocus: true,
+            decoration: InputDecoration(
+              labelText: 'Nom du canal (ex: U13, Seniors...)',
+              prefixIcon: const Icon(Icons.tag),
+              border: OutlineInputBorder(borderRadius: BorderRadius.circular(10)),
+              filled: true, fillColor: Colors.white.withOpacity(0.05),
+            ),
+          ),
+        ),
+        const Padding(
+          padding: EdgeInsets.symmetric(horizontal: 16),
+          child: Align(alignment: Alignment.centerLeft,
+              child: Text('Inviter des membres', style: TextStyle(color: Colors.white54, fontSize: 13))),
+        ),
+        const SizedBox(height: 8),
+        ConstrainedBox(
+          constraints: const BoxConstraints(maxHeight: 250),
+          child: ListView.builder(
+            shrinkWrap: true,
+            itemCount: widget.members.length,
+            itemBuilder: (context, i) {
+              final data = widget.members[i].data() as Map<String, dynamic>;
+              final uid = widget.members[i].id;
+              final name = data['name'] as String? ?? 'Joueur';
+              final selected = _selectedUids.contains(uid);
+              return CheckboxListTile(
+                value: selected,
+                onChanged: (v) => setState(() {
+                  if (v == true) _selectedUids.add(uid);
+                  else _selectedUids.remove(uid);
+                }),
+                title: Text(name),
+                subtitle: Text(data['customRole'] as String? ?? '',
+                    style: TextStyle(color: roleColor(data['customRole'] as String? ?? ''), fontSize: 11)),
+                secondary: CircleAvatar(
+                  backgroundColor: Colors.blueAccent.withOpacity(0.2),
+                  child: Text(name[0].toUpperCase(),
+                      style: const TextStyle(color: Colors.blueAccent, fontWeight: FontWeight.bold)),
+                ),
+                activeColor: Colors.blueAccent,
+              );
+            },
+          ),
+        ),
+        Padding(
+          padding: const EdgeInsets.all(16),
+          child: SizedBox(
+            width: double.infinity,
+            child: ElevatedButton(
+              style: ElevatedButton.styleFrom(
+                backgroundColor: Colors.blueAccent,
+                padding: const EdgeInsets.symmetric(vertical: 14),
+                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+              ),
+              onPressed: () {
+                final name = _nameController.text.trim();
+                if (name.isEmpty) return;
+                Navigator.pop(context, {'name': name, 'members': _selectedUids.toList()});
+              },
+              child: const Text('CRÉER LE CANAL',
+                  style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
+            ),
+          ),
+        ),
+      ]),
+    );
+  }
+}
+
+// Écran de chat (ouvert en navigation)
+class ChatScreen extends StatefulWidget {
+  final String clubId, channelId, channelName, uid;
+  final bool isPrivate;
+  const ChatScreen({super.key, required this.clubId, required this.channelId,
+      required this.channelName, required this.isPrivate, required this.uid});
+  @override
+  State<ChatScreen> createState() => _ChatScreenState();
+}
+
+class _ChatScreenState extends State<ChatScreen> {
+  final _msgController = TextEditingController();
+  final _scrollController = ScrollController();
+  String? _myName;
+
+  @override
+  void initState() {
+    super.initState();
+    FirebaseFirestore.instance.collection('users').doc(widget.uid).get().then((d) {
+      if (mounted) setState(() => _myName = (d.data() as Map?)?['name'] as String? ?? 'Joueur');
+    });
+  }
+
+  Future<void> _sendMessage() async {
+    final text = _msgController.text.trim();
+    if (text.isEmpty || _myName == null) return;
+    _msgController.clear();
+    final ref = FirebaseFirestore.instance
+        .collection('clubs').doc(widget.clubId)
+        .collection('channels').doc(widget.channelId);
+    // Envoyer le message
+    await ref.collection('messages').add({
+      'text': text,
+      'senderId': widget.uid,
+      'senderName': _myName,
+      'sentAt': FieldValue.serverTimestamp(),
+    });
+    // Mettre à jour le dernier message sur le canal
+    await ref.update({
+      'lastMessage': '${_myName!} : $text',
+      'lastMessageAt': FieldValue.serverTimestamp(),
+    });
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      appBar: AppBar(
+        backgroundColor: const Color(0xFF18181B),
+        elevation: 0,
+        leading: IconButton(
+          icon: const Icon(Icons.arrow_back),
+          onPressed: () => Navigator.pop(context),
+        ),
+        title: Row(children: [
+          Container(
+            width: 36, height: 36,
+            decoration: BoxDecoration(
+              shape: BoxShape.circle,
+              color: (widget.isPrivate ? Colors.purpleAccent : Colors.blueAccent).withOpacity(0.2),
+            ),
+            child: Center(child: Icon(
+              widget.isPrivate ? Icons.person : Icons.tag,
+              color: widget.isPrivate ? Colors.purpleAccent : Colors.blueAccent,
+              size: 18,
+            )),
+          ),
+          const SizedBox(width: 10),
+          Text(widget.channelName, style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
+        ]),
+      ),
+      body: Column(children: [
+        Expanded(
+          child: StreamBuilder<QuerySnapshot>(
+            stream: FirebaseFirestore.instance
+                .collection('clubs').doc(widget.clubId)
+                .collection('channels').doc(widget.channelId)
+                .collection('messages')
+                .orderBy('sentAt')
+                .snapshots(),
+            builder: (context, snap) {
+              if (!snap.hasData) return const Center(child: CircularProgressIndicator());
+              final docs = snap.data!.docs;
+              if (docs.isEmpty) {
+                return Center(child: Column(mainAxisAlignment: MainAxisAlignment.center, children: [
+                  Icon(Icons.chat_bubble_outline, size: 48, color: Colors.white.withOpacity(0.1)),
+                  const SizedBox(height: 12),
+                  Text('Commence la conversation dans ${widget.isPrivate ? widget.channelName : "#${widget.channelName}"}',
+                      style: const TextStyle(color: Colors.white38), textAlign: TextAlign.center),
+                ]));
+              }
+              WidgetsBinding.instance.addPostFrameCallback((_) {
+                if (_scrollController.hasClients) {
+                  _scrollController.animateTo(_scrollController.position.maxScrollExtent,
+                      duration: const Duration(milliseconds: 200), curve: Curves.easeOut);
+                }
+              });
+              return ListView.builder(
+                controller: _scrollController,
+                padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                itemCount: docs.length,
+                itemBuilder: (context, i) {
+                  final msg = docs[i].data() as Map<String, dynamic>;
+                  final isMe = msg['senderId'] == widget.uid;
+                  final showName = !widget.isPrivate && (i == 0 ||
+                      (docs[i - 1].data() as Map)['senderId'] != msg['senderId']);
+                  return _MessageBubble(msg: msg, isMe: isMe, showName: showName);
+                },
+              );
+            },
+          ),
+        ),
+        Container(
+          padding: const EdgeInsets.fromLTRB(16, 8, 16, 16),
+          decoration: BoxDecoration(
+            color: const Color(0xFF18181B),
+            border: Border(top: BorderSide(color: Colors.white.withOpacity(0.08))),
+          ),
+          child: Row(children: [
+            Expanded(
+              child: TextField(
+                controller: _msgController,
+                decoration: InputDecoration(
+                  hintText: 'Message...',
+                  hintStyle: const TextStyle(color: Colors.white38),
+                  border: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(24), borderSide: BorderSide.none),
+                  filled: true,
+                  fillColor: Colors.white.withOpacity(0.08),
+                  contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+                ),
+                onSubmitted: (_) => _sendMessage(),
+              ),
+            ),
+            const SizedBox(width: 8),
+            GestureDetector(
+              onTap: _sendMessage,
+              child: Container(
+                padding: const EdgeInsets.all(12),
+                decoration: const BoxDecoration(color: Colors.blueAccent, shape: BoxShape.circle),
+                child: const Icon(Icons.send_rounded, color: Colors.white, size: 20),
+              ),
+            ),
+          ]),
+        ),
+      ]),
+    );
+  }
+}
+
+// ignore: unused_element
 class ChatView extends StatefulWidget {
   final String clubId, channel;
   const ChatView({super.key, required this.clubId, required this.channel});
@@ -1598,116 +1840,12 @@ class ChatView extends StatefulWidget {
   State<ChatView> createState() => _ChatViewState();
 }
 
+// ignore: unused_element
 class _ChatViewState extends State<ChatView> {
   final _msgController = TextEditingController();
   final _scrollController = ScrollController();
-
-  Future<void> _sendMessage() async {
-    final text = _msgController.text.trim();
-    if (text.isEmpty) return;
-    final user = FirebaseAuth.instance.currentUser!;
-    final userData =
-        await FirebaseFirestore.instance.collection('users').doc(user.uid).get();
-    final name = (userData.data() as Map<String, dynamic>)['name'] ?? 'Joueur';
-    _msgController.clear();
-    await FirebaseFirestore.instance
-        .collection('clubs')
-        .doc(widget.clubId)
-        .collection('messages')
-        .add({
-      'text': text,
-      'senderId': user.uid,
-      'senderName': name,
-      'channel': widget.channel,
-      'sentAt': FieldValue.serverTimestamp(),
-    });
-  }
-
   @override
-  Widget build(BuildContext context) {
-    final uid = FirebaseAuth.instance.currentUser!.uid;
-    return Column(children: [
-      Expanded(
-        child: StreamBuilder<QuerySnapshot>(
-          stream: FirebaseFirestore.instance
-              .collection('clubs')
-              .doc(widget.clubId)
-              .collection('messages')
-              .where('channel', isEqualTo: widget.channel)
-              .orderBy('sentAt')
-              .snapshots(),
-          builder: (context, snap) {
-            if (!snap.hasData) return const Center(child: CircularProgressIndicator());
-            final docs = snap.data!.docs;
-            if (docs.isEmpty) {
-              return Center(
-                  child: Column(mainAxisAlignment: MainAxisAlignment.center, children: [
-                Icon(Icons.chat_bubble_outline,
-                    size: 48, color: Colors.white.withOpacity(0.1)),
-                const SizedBox(height: 12),
-                Text(
-                    'Aucun message dans ${widget.channel.startsWith("💬") ? widget.channel : "#${widget.channel}"}',
-                    style: const TextStyle(color: Colors.white38)),
-              ]));
-            }
-            WidgetsBinding.instance.addPostFrameCallback((_) {
-              if (_scrollController.hasClients) {
-                _scrollController.animateTo(_scrollController.position.maxScrollExtent,
-                    duration: const Duration(milliseconds: 200), curve: Curves.easeOut);
-              }
-            });
-            return ListView.builder(
-              controller: _scrollController,
-              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-              itemCount: docs.length,
-              itemBuilder: (context, i) {
-                final msg = docs[i].data() as Map<String, dynamic>;
-                final isMe = msg['senderId'] == uid;
-                final showName = i == 0 ||
-                    (docs[i - 1].data() as Map)['senderId'] != msg['senderId'];
-                return _MessageBubble(msg: msg, isMe: isMe, showName: showName);
-              },
-            );
-          },
-        ),
-      ),
-      Container(
-        padding: const EdgeInsets.fromLTRB(16, 8, 16, 16),
-        decoration: BoxDecoration(
-          color: const Color(0xFF18181B),
-          border: Border(top: BorderSide(color: Colors.white.withOpacity(0.08))),
-        ),
-        child: Row(children: [
-          Expanded(
-            child: TextField(
-              controller: _msgController,
-              decoration: InputDecoration(
-                hintText:
-                    'Message dans ${widget.channel.startsWith("💬") ? widget.channel : "#${widget.channel}"}...',
-                hintStyle: const TextStyle(color: Colors.white38),
-                border: OutlineInputBorder(
-                    borderRadius: BorderRadius.circular(24), borderSide: BorderSide.none),
-                filled: true,
-                fillColor: Colors.white.withOpacity(0.08),
-                contentPadding:
-                    const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
-              ),
-              onSubmitted: (_) => _sendMessage(),
-            ),
-          ),
-          const SizedBox(width: 8),
-          GestureDetector(
-            onTap: _sendMessage,
-            child: Container(
-              padding: const EdgeInsets.all(12),
-              decoration: const BoxDecoration(color: Colors.blueAccent, shape: BoxShape.circle),
-              child: const Icon(Icons.send_rounded, color: Colors.white, size: 20),
-            ),
-          ),
-        ]),
-      ),
-    ]);
-  }
+  Widget build(BuildContext context) => const SizedBox();
 }
 
 class _MessageBubble extends StatelessWidget {
@@ -1729,37 +1867,35 @@ class _MessageBubble extends StatelessWidget {
                     radius: 14,
                     backgroundColor: Colors.blueAccent.withOpacity(0.3),
                     child: Text((msg['senderName'] as String? ?? 'U')[0].toUpperCase(),
-                        style: const TextStyle(
-                            fontSize: 11,
-                            fontWeight: FontWeight.bold,
-                            color: Colors.blueAccent)))
+                        style: const TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: Colors.blueAccent)))
                 : const SizedBox(width: 28),
             const SizedBox(width: 8),
           ],
           Flexible(
             child: Column(
-                crossAxisAlignment:
-                    isMe ? CrossAxisAlignment.end : CrossAxisAlignment.start,
-                children: [
-                  if (!isMe && showName)
-                    Padding(
-                        padding: const EdgeInsets.only(bottom: 3),
-                        child: Text(msg['senderName'] ?? '',
-                            style: const TextStyle(color: Colors.white38, fontSize: 11))),
-                  Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
-                    decoration: BoxDecoration(
-                      color: isMe ? Colors.blueAccent : Colors.white.withOpacity(0.08),
-                      borderRadius: BorderRadius.only(
-                        topLeft: const Radius.circular(16),
-                        topRight: const Radius.circular(16),
-                        bottomLeft: Radius.circular(isMe ? 16 : 4),
-                        bottomRight: Radius.circular(isMe ? 4 : 16),
-                      ),
-                    ),
-                    child: Text(msg['text'] ?? '', style: const TextStyle(fontSize: 14)),
+              crossAxisAlignment: isMe ? CrossAxisAlignment.end : CrossAxisAlignment.start,
+              children: [
+                if (!isMe && showName)
+                  Padding(
+                    padding: const EdgeInsets.only(bottom: 3),
+                    child: Text(msg['senderName'] ?? '',
+                        style: const TextStyle(color: Colors.white38, fontSize: 11)),
                   ),
-                ]),
+                Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+                  decoration: BoxDecoration(
+                    color: isMe ? Colors.blueAccent : Colors.white.withOpacity(0.08),
+                    borderRadius: BorderRadius.only(
+                      topLeft: const Radius.circular(16),
+                      topRight: const Radius.circular(16),
+                      bottomLeft: Radius.circular(isMe ? 16 : 4),
+                      bottomRight: Radius.circular(isMe ? 4 : 16),
+                    ),
+                  ),
+                  child: Text(msg['text'] ?? '', style: const TextStyle(fontSize: 14)),
+                ),
+              ],
+            ),
           ),
         ],
       ),
@@ -1874,70 +2010,169 @@ class _MemberTile extends StatelessWidget {
     }
   }
 
+  Future<void> _openPrivateChat(BuildContext context) async {
+    final currentUid = FirebaseAuth.instance.currentUser!.uid;
+    final db = FirebaseFirestore.instance;
+    final name = data['name'] as String? ?? 'Joueur';
+
+    // Chercher si une discussion privée existe déjà entre ces deux utilisateurs
+    final existing = await db
+        .collection('clubs').doc(clubId)
+        .collection('channels')
+        .where('type', isEqualTo: 'private')
+        .where('members', arrayContains: currentUid)
+        .get();
+
+    String? channelId;
+    for (final doc in existing.docs) {
+      final members = (doc.data()['members'] as List? ?? []).cast<String>();
+      if (members.contains(docId)) {
+        channelId = doc.id;
+        break;
+      }
+    }
+
+    // Créer la discussion privée si elle n'existe pas
+    if (channelId == null) {
+      final ref = await db
+          .collection('clubs').doc(clubId)
+          .collection('channels').add({
+        'name': name,
+        'type': 'private',
+        'members': [currentUid, docId],
+        'createdBy': currentUid,
+        'lastMessage': '',
+        'lastMessageAt': FieldValue.serverTimestamp(),
+        'createdAt': FieldValue.serverTimestamp(),
+      });
+      channelId = ref.id;
+    }
+
+    if (!context.mounted) return;
+    Navigator.push(context, MaterialPageRoute(
+      builder: (_) => ChatScreen(
+        clubId: clubId, channelId: channelId!,
+        channelName: name, isPrivate: true, uid: currentUid,
+      ),
+    ));
+  }
+
   @override
   Widget build(BuildContext context) {
     final name = data['name'] as String? ?? 'Joueur';
     final firestoreRole = data['role'] as String? ?? 'player';
     final customRole =
         data['customRole'] as String? ?? (firestoreRole == 'manager' ? 'Manager' : 'Joueur');
-    final isCurrentUser = docId == FirebaseAuth.instance.currentUser!.uid;
+    final currentUid = FirebaseAuth.instance.currentUser!.uid;
+    final isCurrentUser = docId == currentUid;
     final color = roleColor(customRole);
 
-    return Container(
-      margin: const EdgeInsets.only(bottom: 8),
-      padding: const EdgeInsets.all(14),
-      decoration: BoxDecoration(
-        color: Colors.white.withOpacity(0.04),
-        borderRadius: BorderRadius.circular(12),
-        border: Border.all(
-            color: isCurrentUser ? Colors.blueAccent.withOpacity(0.4) : Colors.white10),
-      ),
-      child: Row(children: [
-        CircleAvatar(
-          backgroundColor: color.withOpacity(0.2),
-          child: Text(name[0].toUpperCase(),
-              style: TextStyle(color: color, fontWeight: FontWeight.bold)),
+    return GestureDetector(
+      onTap: isCurrentUser ? null : () => _showMemberProfile(context, name, customRole, color),
+      child: Container(
+        margin: const EdgeInsets.only(bottom: 8),
+        padding: const EdgeInsets.all(14),
+        decoration: BoxDecoration(
+          color: Colors.white.withOpacity(0.04),
+          borderRadius: BorderRadius.circular(12),
+          border: Border.all(
+              color: isCurrentUser ? Colors.blueAccent.withOpacity(0.4) : Colors.white10),
         ),
-        const SizedBox(width: 12),
-        Expanded(
-            child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-          Row(children: [
-            Text(name, style: const TextStyle(fontWeight: FontWeight.bold)),
-            if (isCurrentUser) ...[
-              const SizedBox(width: 6),
-              Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-                  decoration: BoxDecoration(
-                      color: Colors.blueAccent.withOpacity(0.2),
-                      borderRadius: BorderRadius.circular(4)),
-                  child: const Text('Moi',
-                      style: TextStyle(color: Colors.blueAccent, fontSize: 10))),
-            ],
-          ]),
-          Text(data['email'] ?? '',
-              style: const TextStyle(color: Colors.white38, fontSize: 12)),
-        ])),
-        GestureDetector(
-          onTap: isManager ? () => _changeRole(context) : null,
-          child: Container(
-            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
-            decoration: BoxDecoration(
-              color: color.withOpacity(0.12),
-              borderRadius: BorderRadius.circular(8),
-              border: Border.all(color: color.withOpacity(0.3)),
-            ),
-            child: Row(mainAxisSize: MainAxisSize.min, children: [
-              Text(customRole,
-                  style: TextStyle(
-                      color: color, fontSize: 11, fontWeight: FontWeight.bold)),
-              if (isManager) ...[
-                const SizedBox(width: 4),
-                Icon(Icons.edit, size: 10, color: color.withOpacity(0.6)),
+        child: Row(children: [
+          CircleAvatar(
+            backgroundColor: color.withOpacity(0.2),
+            child: Text(name[0].toUpperCase(),
+                style: TextStyle(color: color, fontWeight: FontWeight.bold)),
+          ),
+          const SizedBox(width: 12),
+          Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+            Row(children: [
+              Text(name, style: const TextStyle(fontWeight: FontWeight.bold)),
+              if (isCurrentUser) ...[
+                const SizedBox(width: 6),
+                Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                    decoration: BoxDecoration(
+                        color: Colors.blueAccent.withOpacity(0.2),
+                        borderRadius: BorderRadius.circular(4)),
+                    child: const Text('Moi',
+                        style: TextStyle(color: Colors.blueAccent, fontSize: 10))),
               ],
             ]),
+            Text(data['email'] ?? '',
+                style: const TextStyle(color: Colors.white38, fontSize: 12)),
+          ])),
+          GestureDetector(
+            onTap: isManager ? () => _changeRole(context) : null,
+            child: Container(
+              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+              decoration: BoxDecoration(
+                color: color.withOpacity(0.12),
+                borderRadius: BorderRadius.circular(8),
+                border: Border.all(color: color.withOpacity(0.3)),
+              ),
+              child: Row(mainAxisSize: MainAxisSize.min, children: [
+                Text(customRole,
+                    style: TextStyle(color: color, fontSize: 11, fontWeight: FontWeight.bold)),
+                if (isManager) ...[
+                  const SizedBox(width: 4),
+                  Icon(Icons.edit, size: 10, color: color.withOpacity(0.6)),
+                ],
+              ]),
+            ),
           ),
-        ),
-      ]),
+        ]),
+      ),
+    );
+  }
+
+  void _showMemberProfile(BuildContext context, String name, String role, Color color) {
+    showModalBottomSheet(
+      context: context,
+      backgroundColor: const Color(0xFF1C1C1E),
+      shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(24))),
+      builder: (_) => Padding(
+        padding: const EdgeInsets.all(24),
+        child: Column(mainAxisSize: MainAxisSize.min, children: [
+          CircleAvatar(
+            radius: 36,
+            backgroundColor: color.withOpacity(0.2),
+            child: Text(name[0].toUpperCase(),
+                style: TextStyle(color: color, fontSize: 28, fontWeight: FontWeight.bold)),
+          ),
+          const SizedBox(height: 12),
+          Text(name, style: const TextStyle(fontSize: 20, fontWeight: FontWeight.bold)),
+          const SizedBox(height: 4),
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
+            decoration: BoxDecoration(
+              color: color.withOpacity(0.15),
+              borderRadius: BorderRadius.circular(12),
+            ),
+            child: Text(role, style: TextStyle(color: color, fontWeight: FontWeight.bold)),
+          ),
+          Text(data['email'] ?? '', style: const TextStyle(color: Colors.white38, fontSize: 13)),
+          const SizedBox(height: 24),
+          SizedBox(
+            width: double.infinity,
+            child: ElevatedButton.icon(
+              style: ElevatedButton.styleFrom(
+                backgroundColor: Colors.blueAccent,
+                padding: const EdgeInsets.symmetric(vertical: 14),
+                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+              ),
+              onPressed: () {
+                Navigator.pop(context);
+                _openPrivateChat(context);
+              },
+              icon: const Icon(Icons.chat_bubble_outline, color: Colors.white),
+              label: const Text('Envoyer un message',
+                  style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
+            ),
+          ),
+          const SizedBox(height: 8),
+        ]),
+      ),
     );
   }
 }
